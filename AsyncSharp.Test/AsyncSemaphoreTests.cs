@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -201,15 +202,37 @@ namespace AsyncSharp.Test
         }
 
         [Fact]
-        public void WaitAsync_Timeout_Success()
+        public async Task WaitAsync_Timeout_Success()
         {
             var startTime = DateTime.UtcNow;
             var semaphore = new AsyncSemaphore(0, 1);
-            var acquiredSemaphore = semaphore.Wait(1, 250);
+            var acquiredSemaphore = await semaphore.WaitAsync(1, 100);
             var timeWaited = DateTime.UtcNow - startTime;
 
             Assert.False(acquiredSemaphore);
             Assert.True(timeWaited > TimeSpan.FromMilliseconds(100));
+        }
+
+        [Fact(Skip = "Hangs forever due to CancellationToken only being checked at beginning.")]
+        public void Wait_CancellationToken_Success()
+        {
+            var semaphore = new AsyncSemaphore(0, 1);
+            using (var cancellationToken = new CancellationTokenSource(100))
+            {
+                Assert.Throws<OperationCanceledException>(() 
+                    => semaphore.Wait(cancellationToken.Token));
+            }
+        }
+
+        [Fact]
+        public async Task WaitAsync_CancellationToken_Success()
+        {
+            var semaphore = new AsyncSemaphore(0, 1);
+            using (var cancellationTokenSource = new CancellationTokenSource(100))
+            {
+                await Assert.ThrowsAsync<OperationCanceledException>(() 
+                    => semaphore.WaitAsync(cancellationTokenSource.Token));
+            }
         }
 
         #region Explicit
