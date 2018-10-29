@@ -213,7 +213,7 @@ namespace AsyncSharp.Test
             Assert.True(timeWaited > TimeSpan.FromMilliseconds(100));
         }
 
-        [Fact(Skip = "Hangs forever due to CancellationToken only being checked at beginning.")]
+        [Fact]
         public void Wait_CancellationToken_Success()
         {
             var semaphore = new AsyncSemaphore(0, 1);
