@@ -6,6 +6,11 @@ using System.Threading.Tasks;
 
 namespace AsyncSharp
 {
+    /// <summary>
+    /// Provides an async friendly Semaphore with the intention of providing more features than SemaphoreSlim, including
+    /// waiting on multiple count, atomically release all waiters, disposable wait and release, and fairness of the order
+    /// that waiters are released based on the order of their wait.
+    /// </summary>
     public class AsyncSemaphore
     {
         private volatile int _currentCount; // Count available to acquire (Waits asking for more than available are blocked)
@@ -25,26 +30,30 @@ namespace AsyncSharp
         private sealed class QueuedSynchronousAcquire : IQueuedAcquire, IDisposable
         {
             public int Count { get; }
-            public volatile bool Completed = false;
-            private readonly EventWaitHandle _waitHandle = new EventWaitHandle(false, EventResetMode.AutoReset);
+            private readonly ManualResetEventSlim _waitHandle = new ManualResetEventSlim(false);
 
             public QueuedSynchronousAcquire(int count)
             {
                 Count = count;
             }
 
-            public bool Wait(int timeout = 0)
+            public bool Wait(int timeout, CancellationToken cancellationToken)
             {
-                if (timeout > 0)
+                if (timeout == int.MaxValue)
                 {
-                    return _waitHandle.WaitOne(timeout);
+                    _waitHandle.Wait(cancellationToken);
+                    return true;
+                }
+                else if (timeout > 0)
+                {
+                    return _waitHandle.Wait(timeout, cancellationToken);
                 }
                 else
                 {
-                    return _waitHandle.WaitOne(0);
+                    return _waitHandle.Wait(0, cancellationToken);
                 }
             }
-
+            
             public void GrantAcquire()
             {
                 // The waiter is blocking on a lock to this object
@@ -193,6 +202,7 @@ namespace AsyncSharp
             }
 
             // TODO: Add support for CancellationToken where a callback sets the queued waiter as failed then releases it
+            var acquiredSuccess = false;
             QueuedSynchronousAcquire queuedAcquire = null;
             try
             {
@@ -212,17 +222,22 @@ namespace AsyncSharp
                 }
 
                 var timeToWait = timeout - (int)((uint)Environment.TickCount - startTime);
-                var acquiredSuccess = queuedAcquire.Wait(timeToWait);
-
-                if (!acquiredSuccess)
-                {
-                    RemoveFailedWaiter(queuedAcquire);
-                }
+                acquiredSuccess = queuedAcquire.Wait(timeToWait, cancellationToken);
                 return acquiredSuccess;
             }
             finally
             {
-                queuedAcquire?.Dispose();
+                if (queuedAcquire != null)
+                {
+                    if (!acquiredSuccess)
+                    {
+                        lock (_lock)
+                        {
+                            RemoveFailedWaiter(queuedAcquire);
+                        }
+                    }
+                    queuedAcquire.Dispose();
+                }
             }
         }
 
@@ -234,12 +249,9 @@ namespace AsyncSharp
         /// <param name="queuedAcquire">The IQueudAcquire to remove from the queue.</param>
         private void RemoveFailedWaiter(IQueuedAcquire queuedAcquire)
         {
-            lock (_lock)
+            if (!_queuedAcquireRequests.Remove(queuedAcquire))
             {
-                if (!_queuedAcquireRequests.Remove(queuedAcquire))
-                {
-                    Release(queuedAcquire.Count);
-                }
+                Release(queuedAcquire.Count);
             }
         }
         
@@ -334,7 +346,10 @@ namespace AsyncSharp
                 }
             }
 
-            RemoveFailedWaiter(queuedAcquire);
+            lock (_lock)
+            {
+                RemoveFailedWaiter(queuedAcquire);
+            }
             cancellationToken.ThrowIfCancellationRequested();
             return false;
         }
