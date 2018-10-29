@@ -1,0 +1,305 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Xunit;
+
+namespace AsyncSharp.Test
+{
+    public class AsyncSemaphoreTests
+    {
+        [Fact]
+        public void Wait_Success()
+        {
+            var semaphore = new AsyncSemaphore(1, 1, true);
+
+            semaphore.Wait();
+            var acquiredLock = semaphore.Wait(1, 0);
+            
+            Assert.False(acquiredLock);
+        }
+
+        [Fact]
+        public async Task WaitAsync_Success()
+        {
+            var semaphore = new AsyncSemaphore(1, 1, true);
+
+            await semaphore.WaitAsync();
+            var acquiredLock = await semaphore.WaitAsync(1, 0);
+
+            Assert.False(acquiredLock);
+        }
+
+        [Fact]
+        public void Wait_Release_Success()
+        {
+            var semaphore = new AsyncSemaphore(1, 1, true);
+
+            for (var i = 0; i < 1000; ++i)
+            {
+                semaphore.Wait();
+                semaphore.Release();
+            }
+        }
+
+        [Fact]
+        public async Task WaitAsync_Release_Success()
+        {
+            var semaphore = new AsyncSemaphore(1, 1, true);
+
+            for (var i = 0; i < 1000; ++i)
+            {
+                await semaphore.WaitAsync();
+                semaphore.Release();
+            }
+        }
+
+        [Fact]
+        public void Wait_Random_Success()
+        {
+            var semaphore = new AsyncSemaphore(1000, 1000, true);
+
+            var random = new Random(1234);
+            var amountLeft = 1000;
+            while (amountLeft > 0)
+            {
+                var maxToAcquire = amountLeft / 2;
+                var amountToAcquire = random.Next(1, maxToAcquire > 1 ? maxToAcquire : 1);
+                Assert.True(semaphore.Wait(amountToAcquire, 0));
+                amountLeft -= amountToAcquire;
+            }
+            semaphore.Release(1000);
+            Assert.True(semaphore.Wait(1000, 0));
+        }
+
+        [Fact]
+        public async Task WaitAsync_Random_Success()
+        {
+            var semaphore = new AsyncSemaphore(1000, 1000, true);
+
+            var random = new Random(1234);
+            var amountLeft = 1000;
+            while (amountLeft > 0)
+            {
+                var maxToAcquire = amountLeft / 2;
+                var amountToAcquire = random.Next(1, maxToAcquire > 1 ? maxToAcquire : 1);
+                Assert.True(await semaphore.WaitAsync(amountToAcquire, 0));
+                amountLeft -= amountToAcquire;
+            }
+            semaphore.Release(1000);
+            Assert.True(await semaphore.WaitAsync(1000, 0));
+        }
+
+        [Fact]
+        public void ReleaseAll_Success()
+        {
+            var semaphore = new AsyncSemaphore(0, 10, true);
+
+            var acquiredWhenNoneAvailable = semaphore.Wait(10, 0);
+            semaphore.ReleaseAll();
+            var acquiredWhenAllAvailable = semaphore.Wait(10, 0);
+
+            Assert.False(acquiredWhenNoneAvailable);
+            Assert.True(acquiredWhenAllAvailable);
+        }
+
+        [Fact]
+        public void Release_Success()
+        {
+            var semaphore = new AsyncSemaphore(0, 5, true);
+
+            var acquiredWhenNoneAvailable = semaphore.Wait(5, 0);
+            semaphore.Release(5);
+            var acquiredWhenAllAvailable = semaphore.Wait(5, 0);
+
+            Assert.False(acquiredWhenNoneAvailable);
+            Assert.True(acquiredWhenAllAvailable);
+        }
+
+        [Fact]
+        public void CurrentCount_MaxCount_Success()
+        {
+            var semaphore = new AsyncSemaphore(14, 18, true);
+            Assert.Equal(18, semaphore.MaxCount);
+            Assert.Equal(14, semaphore.CurrentCount);
+
+            semaphore.Release(2);
+            Assert.Equal(16, semaphore.CurrentCount);
+
+            semaphore.Release();
+            semaphore.Release();
+            Assert.Equal(semaphore.MaxCount, semaphore.CurrentCount);
+
+            semaphore.Wait(18);
+            Assert.Equal(0, semaphore.CurrentCount);
+        }
+
+        [Fact]
+        public void WaitAndRelease_Sucess()
+        {
+            var semaphore = new AsyncSemaphore(5, 10);
+
+            var acquire = semaphore.WaitAndRelease();
+            Assert.Equal(4, semaphore.CurrentCount);
+            acquire.Dispose();
+            Assert.Equal(5, semaphore.CurrentCount);
+
+            acquire = semaphore.WaitAndRelease(5);
+            Assert.Equal(0, semaphore.CurrentCount);
+            acquire.Dispose();
+            Assert.Equal(5, semaphore.CurrentCount);
+        }
+
+        [Fact]
+        public async Task WaitAndReleaseAsync_Sucess()
+        {
+            var semaphore = new AsyncSemaphore(5, 10);
+
+            var acquire = await semaphore.WaitAndReleaseAsync();
+            Assert.Equal(4, semaphore.CurrentCount);
+            acquire.Dispose();
+            Assert.Equal(5, semaphore.CurrentCount);
+
+            acquire = await semaphore.WaitAndReleaseAsync(5);
+            Assert.Equal(0, semaphore.CurrentCount);
+            acquire.Dispose();
+            Assert.Equal(5, semaphore.CurrentCount);
+        }
+
+        [Fact]
+        public void WaitAndReleaseAll_Sucess()
+        {
+            var semaphore = new AsyncSemaphore(10, 10);
+
+            var acquire = semaphore.WaitAndReleaseAll();
+            Assert.Equal(0, semaphore.CurrentCount);
+            acquire.Dispose();
+            Assert.Equal(10, semaphore.CurrentCount);
+        }
+
+        [Fact]
+        public async Task WaitAndReleaseAllAsync_Sucess()
+        {
+            var semaphore = new AsyncSemaphore(10, 10);
+
+            var acquire = await semaphore.WaitAndReleaseAllAsync();
+            Assert.Equal(0, semaphore.CurrentCount);
+            acquire.Dispose();
+            Assert.Equal(10, semaphore.CurrentCount);
+        }
+
+        [Fact]
+        public void Wait_Timeout_Success()
+        {
+            var startTime = DateTime.UtcNow;
+            var semaphore = new AsyncSemaphore(0, 1);
+            var acquiredSemaphore = semaphore.Wait(1, 250);
+            var timeWaited = DateTime.UtcNow - startTime;
+
+            Assert.False(acquiredSemaphore);
+            Assert.True(timeWaited > TimeSpan.FromMilliseconds(100));
+        }
+
+        [Fact]
+        public void WaitAsync_Timeout_Success()
+        {
+            var startTime = DateTime.UtcNow;
+            var semaphore = new AsyncSemaphore(0, 1);
+            var acquiredSemaphore = semaphore.Wait(1, 250);
+            var timeWaited = DateTime.UtcNow - startTime;
+
+            Assert.False(acquiredSemaphore);
+            Assert.True(timeWaited > TimeSpan.FromMilliseconds(100));
+        }
+
+        #region Explicit
+        [Fact(Skip = "This is a time sensitive test that may not work correctly under non-ideal conditions due to how the threaded tasks execute.")]
+        public async Task MultipleSynchronousAcquire_Fair_Success()
+        {
+            var semaphore = new AsyncSemaphore(0, 1, true);
+            var completionTasks = Enumerable.Range(0, 10).Select(_ =>
+            {
+                return new TaskCompletionSource<bool>();
+            }).ToList();
+            
+            var acquireTasks = new List<Task>();
+            for (var  i = 0; i < 10; ++i)
+            {
+                var index = i;
+                var acquireTask = Task.Run(() =>
+                {
+                    semaphore.Wait();
+                    completionTasks[index].SetResult(true);
+                });
+                await Task.Delay(100);
+                while (acquireTask.Status != TaskStatus.Running)
+                {
+                    await Task.Delay(100);
+                }
+            }
+
+            Assert.True(completionTasks.All(t => t.Task.Status != TaskStatus.RanToCompletion));
+
+            for(var i = 0; i < 10; ++i)
+            {
+                for (var finished = 0; finished < i; ++finished)
+                {
+                    Assert.True(completionTasks[finished].Task.IsCompletedSuccessfully);
+                }
+                for (var running = i; running < 10; ++running)
+                {
+                    Assert.NotEqual(TaskStatus.RanToCompletion, completionTasks[running].Task.Status);
+                }
+                semaphore.Release();
+                await Task.Delay(100);
+            }
+
+            Assert.True(completionTasks.All(t => t.Task.IsCompletedSuccessfully));
+        }
+
+        [Fact(Skip = "This is a time sensitive test that may not work correctly under non-ideal conditions due to how the threaded tasks execute.")]
+        public async Task MultipleAsynchronousAcquire_Fair_Success()
+        {
+            var semaphore = new AsyncSemaphore(0, 1, true);
+            var completionTasks = Enumerable.Range(0, 10).Select(_ =>
+            {
+                return new TaskCompletionSource<bool>();
+            }).ToList();
+
+            var acquireTasks = new List<Task>();
+            for (var i = 0; i < 10; ++i)
+            {
+                var index = i;
+                var acquireTask = Task.Run(async () =>
+                {
+                    await semaphore.WaitAsync();
+                    completionTasks[index].SetResult(true);
+                });
+                await Task.Delay(100);
+                while (acquireTask.Status != TaskStatus.Running)
+                {
+                    await Task.Delay(100);
+                }
+            }
+
+            Assert.True(completionTasks.All(t => t.Task.Status != TaskStatus.RanToCompletion));
+
+            for (var i = 0; i < 10; ++i)
+            {
+                for (var finished = 0; finished < i; ++finished)
+                {
+                    Assert.True(completionTasks[finished].Task.IsCompletedSuccessfully);
+                }
+                for (var running = i; running < 10; ++running)
+                {
+                    Assert.NotEqual(TaskStatus.RanToCompletion, completionTasks[running].Task.Status);
+                }
+                semaphore.Release();
+                await Task.Delay(100);
+            }
+
+            Assert.True(completionTasks.All(t => t.Task.IsCompletedSuccessfully));
+        }
+        #endregion
+    }
+}
