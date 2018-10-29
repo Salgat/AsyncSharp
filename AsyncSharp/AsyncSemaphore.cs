@@ -335,6 +335,7 @@ namespace AsyncSharp
             }
 
             RemoveFailedWaiter(queuedAcquire);
+            cancellationToken.ThrowIfCancellationRequested();
             return false;
         }
 
