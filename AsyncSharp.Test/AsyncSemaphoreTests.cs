@@ -265,6 +265,28 @@ namespace AsyncSharp.Test
             Assert.Equal(1, semaphore.CurrentCount);
         }
 
+        [Fact]
+        public void Wait_CancellationToken_Success()
+        {
+            var semaphore = new AsyncSemaphore(0, 1);
+            using (var cancellationToken = new CancellationTokenSource(100))
+            {
+                Assert.Throws<OperationCanceledException>(() 
+                    => semaphore.Wait(cancellationToken.Token));
+            }
+        }
+
+        [Fact]
+        public async Task WaitAsync_CancellationToken_Success()
+        {
+            var semaphore = new AsyncSemaphore(0, 1);
+            using (var cancellationTokenSource = new CancellationTokenSource(100))
+            {
+                await Assert.ThrowsAsync<OperationCanceledException>(() 
+                    => semaphore.WaitAsync(cancellationTokenSource.Token));
+            }
+        }
+
         #region Explicit
         [Fact(Skip = "This is a time sensitive test that may not work correctly under non-ideal conditions due to how the threaded tasks execute.")]
         public async Task MultipleSynchronousAcquire_Fair()
