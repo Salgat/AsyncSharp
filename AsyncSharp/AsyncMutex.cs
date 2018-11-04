@@ -6,11 +6,14 @@ using System.Threading.Tasks;
 
 namespace AsyncSharp
 {
-    public class AsyncLock
+    /// <summary>
+    /// Async friendly mutex. Unlike a normal CLR lock, this is not re-entrant.
+    /// </summary>
+    public class AsyncMutex
     {
         private readonly AsyncSemaphore _asyncSemaphore = new AsyncSemaphore(1, 1, true);
 
-        public AsyncLock() { }
+        public AsyncMutex() { }
 
         /// <summary>
         /// Synchronously acquires lock.
@@ -22,7 +25,7 @@ namespace AsyncSharp
         /// Synchronously acquires lock.
         /// </summary>
         /// <param name="timeout"></param>
-        public void Lock(int timeout)
+        public bool Lock(int timeout)
             => _asyncSemaphore.Wait(1, timeout);
 
         /// <summary>
@@ -37,7 +40,7 @@ namespace AsyncSharp
         /// </summary>
         /// <param name="timeout"></param>
         /// <param name="cancellationToken"></param>
-        public void Lock(int timeout, CancellationToken cancellationToken)
+        public bool Lock(int timeout, CancellationToken cancellationToken)
             => _asyncSemaphore.Wait(1, timeout, cancellationToken);
 
         /// <summary>
@@ -52,7 +55,7 @@ namespace AsyncSharp
         /// </summary>
         /// <param name="timeout"></param>
         /// <returns></returns>
-        public Task LockAsync(int timeout)
+        public Task<bool> LockAsync(int timeout)
             => _asyncSemaphore.WaitAsync(1, timeout);
 
         /// <summary>
@@ -69,7 +72,7 @@ namespace AsyncSharp
         /// <param name="timeout"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        public Task LockAsync(int timeout, CancellationToken cancellationToken)
+        public Task<bool> LockAsync(int timeout, CancellationToken cancellationToken)
             => _asyncSemaphore.WaitAsync(1, timeout, cancellationToken);
 
         /// <summary>
