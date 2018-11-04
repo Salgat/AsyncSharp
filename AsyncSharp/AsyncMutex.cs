@@ -1,4 +1,28 @@
-﻿using System;
+﻿/*
+MIT License
+
+Copyright (c) 2018 Austin Salgat
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
@@ -6,11 +30,14 @@ using System.Threading.Tasks;
 
 namespace AsyncSharp
 {
-    public class AsyncLock
+    /// <summary>
+    /// Async friendly mutex. Unlike a normal CLR lock, this is not re-entrant.
+    /// </summary>
+    public class AsyncMutex
     {
         private readonly AsyncSemaphore _asyncSemaphore = new AsyncSemaphore(1, 1, true);
 
-        public AsyncLock() { }
+        public AsyncMutex() { }
 
         /// <summary>
         /// Synchronously acquires lock.
@@ -22,7 +49,7 @@ namespace AsyncSharp
         /// Synchronously acquires lock.
         /// </summary>
         /// <param name="timeout"></param>
-        public void Lock(int timeout)
+        public bool Lock(int timeout)
             => _asyncSemaphore.Wait(1, timeout);
 
         /// <summary>
@@ -37,7 +64,7 @@ namespace AsyncSharp
         /// </summary>
         /// <param name="timeout"></param>
         /// <param name="cancellationToken"></param>
-        public void Lock(int timeout, CancellationToken cancellationToken)
+        public bool Lock(int timeout, CancellationToken cancellationToken)
             => _asyncSemaphore.Wait(1, timeout, cancellationToken);
 
         /// <summary>
@@ -52,7 +79,7 @@ namespace AsyncSharp
         /// </summary>
         /// <param name="timeout"></param>
         /// <returns></returns>
-        public Task LockAsync(int timeout)
+        public Task<bool> LockAsync(int timeout)
             => _asyncSemaphore.WaitAsync(1, timeout);
 
         /// <summary>
@@ -69,7 +96,7 @@ namespace AsyncSharp
         /// <param name="timeout"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        public Task LockAsync(int timeout, CancellationToken cancellationToken)
+        public Task<bool> LockAsync(int timeout, CancellationToken cancellationToken)
             => _asyncSemaphore.WaitAsync(1, timeout, cancellationToken);
 
         /// <summary>
