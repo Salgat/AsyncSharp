@@ -2,7 +2,6 @@
 A collection of async friendly classes for resource control, including **AsyncSemaphore**, **AsyncMutex**, and **ReadersWriterAsyncLock**. All classes provide both synchronous and asynchronous methods that expose both timeouts and cancellation token support.
 
 ## AsyncSemaphore
-------
 AsyncSemaphore provides similar functionality to SemaphoreSlim, along with the ability to acquire more than 1 count in a single operation, to release all at once, optional fairness (for both synchronous and asynchronous operations together), and optional disposable acquire and release operations.
 
 ```csharp
@@ -19,7 +18,6 @@ finally
 ```
 
 ## AsyncMutex
-------
 AsyncMutex provides similar functionality to AsyncSemaphore, but only allows for an exclusive acquire of the mutex.
 
 ```csharp
@@ -36,7 +34,6 @@ finally
 ```
 
 ## ReadersWriterAsyncLock
-------
 Provides a readers-writer lock that is both async friendly, allows for optional fairness, optional max number of readers, and optional upgradeable locks.
 
 ```csharp
