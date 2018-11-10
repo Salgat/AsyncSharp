@@ -35,7 +35,7 @@ namespace AsyncSharp.Test
             var capturedLock = mutex.Lock(100);
 
             Assert.False(capturedLock);
-            Assert.True(Environment.TickCount - start >= 100);
+            Assert.True(Environment.TickCount - start >= 90);
         }
 
         [Fact]
@@ -48,7 +48,7 @@ namespace AsyncSharp.Test
             var capturedLock = await mutex.LockAsync(100);
 
             Assert.False(capturedLock);
-            Assert.True(Environment.TickCount - start >= 100);
+            Assert.True(Environment.TickCount - start >= 90);
         }
 
         [Fact]
@@ -62,7 +62,7 @@ namespace AsyncSharp.Test
             {
                 Assert.Throws<OperationCanceledException>(()
                     => mutex.Lock(cancellationTokenSource.Token));
-                Assert.True(Environment.TickCount - start >= 100);
+                Assert.True(Environment.TickCount - start >= 90);
             }
         }
 
@@ -77,7 +77,7 @@ namespace AsyncSharp.Test
             {
                 await Assert.ThrowsAsync<OperationCanceledException>(()
                     => mutex.LockAsync(cancellationTokenSource.Token));
-                Assert.True(Environment.TickCount - start >= 100);
+                Assert.True(Environment.TickCount - start >= 90);
             }
         }
 

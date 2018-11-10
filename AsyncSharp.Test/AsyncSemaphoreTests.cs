@@ -198,7 +198,7 @@ namespace AsyncSharp.Test
             var timeWaited = Environment.TickCount - startTime;
 
             Assert.False(acquiredSemaphore);
-            Assert.True(timeWaited >= 100);
+            Assert.True(timeWaited >= 90);
         }
 
         [Fact]
@@ -210,7 +210,7 @@ namespace AsyncSharp.Test
             var timeWaited = Environment.TickCount - startTime;
 
             Assert.False(acquiredSemaphore);
-            Assert.True(timeWaited >= 100);
+            Assert.True(timeWaited >= 90);
         }
         
         [Fact]
@@ -222,7 +222,7 @@ namespace AsyncSharp.Test
             {
                 Assert.Throws<OperationCanceledException>(() 
                     => semaphore.Wait(cancellationToken.Token));
-                Assert.True(Environment.TickCount - start >= 100);
+                Assert.True(Environment.TickCount - start >= 90);
             }
         }
 
@@ -235,7 +235,7 @@ namespace AsyncSharp.Test
             {
                 await Assert.ThrowsAsync<OperationCanceledException>(() 
                     => semaphore.WaitAsync(cancellationTokenSource.Token));
-                Assert.True(Environment.TickCount - start >= 100);
+                Assert.True(Environment.TickCount - start >= 90);
             }
         }
         

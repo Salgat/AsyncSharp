@@ -45,7 +45,7 @@ namespace AsyncSharp.Test
                 {
                     Assert.Throws<OperationCanceledException>(() =>
                         readersWriterAsyncLock.AcquireWriter(cancellationTokenSource.Token));
-                    Assert.True(Environment.TickCount - start >= 100);
+                    Assert.True(Environment.TickCount - start >= 90);
                 }
             }
         }
@@ -64,7 +64,7 @@ namespace AsyncSharp.Test
                 {
                     await Assert.ThrowsAsync<OperationCanceledException>(() =>
                         readersWriterAsyncLock.AcquireWriterAsync(cancellationTokenSource.Token));
-                    Assert.True(Environment.TickCount - start >= 100);
+                    Assert.True(Environment.TickCount - start >= 90);
                 }
             }
         }
