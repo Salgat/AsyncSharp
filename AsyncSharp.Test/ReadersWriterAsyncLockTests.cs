@@ -40,12 +40,12 @@ namespace AsyncSharp.Test
             using (readersWriterAsyncLock.AcquireReader())
             using (readersWriterAsyncLock.AcquireReader())
             {
-                var start = DateTime.UtcNow;
+                var start = Environment.TickCount;
                 using (var cancellationTokenSource = new CancellationTokenSource(100))
                 {
                     Assert.Throws<OperationCanceledException>(() =>
                         readersWriterAsyncLock.AcquireWriter(cancellationTokenSource.Token));
-                    Assert.True(DateTime.UtcNow - start > TimeSpan.FromMilliseconds(100));
+                    Assert.True(Environment.TickCount - start >= 100);
                 }
             }
         }
@@ -59,12 +59,12 @@ namespace AsyncSharp.Test
             using (await readersWriterAsyncLock.AcquireReaderAsync())
             using (await readersWriterAsyncLock.AcquireReaderAsync())
             {
-                var start = DateTime.UtcNow;
+                var start = Environment.TickCount;
                 using (var cancellationTokenSource = new CancellationTokenSource(100))
                 {
                     await Assert.ThrowsAsync<OperationCanceledException>(() =>
                         readersWriterAsyncLock.AcquireWriterAsync(cancellationTokenSource.Token));
-                    Assert.True(DateTime.UtcNow - start > TimeSpan.FromMilliseconds(100));
+                    Assert.True(Environment.TickCount - start >= 100);
                 }
             }
         }

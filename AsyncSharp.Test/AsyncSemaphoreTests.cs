@@ -192,37 +192,37 @@ namespace AsyncSharp.Test
         [Fact]
         public void Wait_Timeout()
         {
-            var startTime = DateTime.UtcNow;
+            var startTime = Environment.TickCount;
             var semaphore = new AsyncSemaphore(0, 1);
             var acquiredSemaphore = semaphore.Wait(1, 250);
-            var timeWaited = DateTime.UtcNow - startTime;
+            var timeWaited = Environment.TickCount - startTime;
 
             Assert.False(acquiredSemaphore);
-            Assert.True(timeWaited > TimeSpan.FromMilliseconds(100));
+            Assert.True(timeWaited >= 100);
         }
 
         [Fact]
         public async Task WaitAsync_Timeout()
         {
-            var startTime = DateTime.UtcNow;
+            var startTime = Environment.TickCount;
             var semaphore = new AsyncSemaphore(0, 1);
             var acquiredSemaphore = await semaphore.WaitAsync(1, 100);
-            var timeWaited = DateTime.UtcNow - startTime;
+            var timeWaited = Environment.TickCount - startTime;
 
             Assert.False(acquiredSemaphore);
-            Assert.True(timeWaited > TimeSpan.FromMilliseconds(100));
+            Assert.True(timeWaited >= 100);
         }
         
         [Fact]
         public void Wait_CancellationToken()
         {
             var semaphore = new AsyncSemaphore(0, 1);
-            var start = DateTime.UtcNow;
+            var start = Environment.TickCount;
             using (var cancellationToken = new CancellationTokenSource(100))
             {
                 Assert.Throws<OperationCanceledException>(() 
                     => semaphore.Wait(cancellationToken.Token));
-                Assert.True(DateTime.UtcNow - start > TimeSpan.FromMilliseconds(100));
+                Assert.True(Environment.TickCount - start >= 100);
             }
         }
 
@@ -230,12 +230,12 @@ namespace AsyncSharp.Test
         public async Task WaitAsync_CancellationToken()
         {
             var semaphore = new AsyncSemaphore(0, 1);
-            var start = DateTime.UtcNow;
+            var start = Environment.TickCount;
             using (var cancellationTokenSource = new CancellationTokenSource(100))
             {
                 await Assert.ThrowsAsync<OperationCanceledException>(() 
                     => semaphore.WaitAsync(cancellationTokenSource.Token));
-                Assert.True(DateTime.UtcNow - start > TimeSpan.FromMilliseconds(100));
+                Assert.True(Environment.TickCount - start >= 100);
             }
         }
         
