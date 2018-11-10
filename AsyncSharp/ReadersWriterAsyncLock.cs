@@ -52,13 +52,13 @@ namespace AsyncSharp
                 => UpgradeToWriter(CancellationToken.None);
 
             public IDisposable UpgradeToWriter(CancellationToken cancellationToken)
-                => _readersWriterAsyncLock.AcquireReaders(_readersWriterAsyncLock.MaxReaders - _readerCount, CancellationToken.None);
+                => _readersWriterAsyncLock.AcquireReaders(_readersWriterAsyncLock.MaxReaders - _readerCount, cancellationToken);
             
             public Task<IDisposable> UpgradeToWriterAsync()
                 => UpgradeToWriterAsync(CancellationToken.None);
 
             public Task<IDisposable> UpgradeToWriterAsync(CancellationToken cancellationToken)
-                => _readersWriterAsyncLock.AcquireReadersAsync(_readersWriterAsyncLock.MaxReaders - _readerCount, CancellationToken.None);
+                => _readersWriterAsyncLock.AcquireReadersAsync(_readersWriterAsyncLock.MaxReaders - _readerCount, cancellationToken);
 
             public void Dispose()
             {

@@ -37,12 +37,12 @@ namespace AsyncSharp
     /// </summary>
     public class AsyncSemaphore
     {
-        private volatile int _currentCount; // Count available to acquire (Waits asking for more than available are blocked)
+        private int _currentCount; // Count available to acquire (Waits asking for more than available are blocked)
         private readonly int _maxCount; // Max count that can be acquired
         private readonly bool _fair; // Whether ordering is respected for queued Acquire requests
         private readonly object _lock = new object(); // Grants exclusive access to _currentCount and _queuedAcquireRequests
 
-        // Keeps track of all acquire waiters. Wait/WaitAsync can only add entries, and Release/ReleaseAll can only remove entries.
+        // Keeps track of all acquire waiters. Wait/WaitAsync can only add entries, and Release/ReleaseAll and failed Wait/WaitAsync can only remove entries.
         private readonly IList<IQueuedAcquire> _queuedAcquireRequests = new List<IQueuedAcquire>();
 
         private interface IQueuedAcquire
