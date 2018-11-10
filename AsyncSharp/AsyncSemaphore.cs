@@ -37,12 +37,12 @@ namespace AsyncSharp
     /// </summary>
     public class AsyncSemaphore
     {
-        private volatile int _currentCount; // Count available to acquire (Waits asking for more than available are blocked)
+        private int _currentCount; // Count available to acquire (Waits asking for more than available are blocked)
         private readonly int _maxCount; // Max count that can be acquired
         private readonly bool _fair; // Whether ordering is respected for queued Acquire requests
         private readonly object _lock = new object(); // Grants exclusive access to _currentCount and _queuedAcquireRequests
 
-        // Keeps track of all acquire waiters. Wait/WaitAsync can only add entries, and Release/ReleaseAll can only remove entries.
+        // Keeps track of all acquire waiters. Wait/WaitAsync can only add entries, and Release/ReleaseAll and failed Wait/WaitAsync can only remove entries.
         private readonly IList<IQueuedAcquire> _queuedAcquireRequests = new List<IQueuedAcquire>();
 
         private interface IQueuedAcquire
@@ -63,7 +63,7 @@ namespace AsyncSharp
 
             public bool Wait(int timeout, CancellationToken cancellationToken)
             {
-                if (timeout == int.MaxValue)
+                if (timeout == Timeout.Infinite)
                 {
                     _waitHandle.Wait(cancellationToken);
                     return true;
@@ -203,7 +203,7 @@ namespace AsyncSharp
             => Wait(count, timeout, CancellationToken.None);
 
         public void Wait(int count, CancellationToken cancellationToken)
-            => Wait(count, int.MaxValue, cancellationToken);
+            => Wait(count, Timeout.Infinite, cancellationToken);
         
         /// <summary>
         /// Synchronously blocks until either a successful acquire, a timeout, or a cancellation occurs.
@@ -218,6 +218,10 @@ namespace AsyncSharp
             if (count > _maxCount)
             {
                 throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be less than maximum configured count of '{_maxCount}'.");
+            }
+            if (timeout < -1) // Timeout.Infinite == -1
+            {
+                throw new ArgumentOutOfRangeException($"Requested timeout '{timeout}' must be greater than or equal to -1.");
             }
 
             if (cancellationToken.IsCancellationRequested)
@@ -245,8 +249,15 @@ namespace AsyncSharp
                     _queuedAcquireRequests.Add(queuedAcquire);
                 }
 
-                var timeToWait = timeout - (int)((uint)Environment.TickCount - startTime);
-                acquiredSuccess = queuedAcquire.Wait(timeToWait, cancellationToken);
+                if (timeout == Timeout.Infinite)
+                {
+                    acquiredSuccess = queuedAcquire.Wait(Timeout.Infinite, cancellationToken);
+                }
+                else
+                {
+                    var timeToWait = timeout - (int)((uint)Environment.TickCount - startTime);
+                    acquiredSuccess = queuedAcquire.Wait(timeToWait, cancellationToken);
+                }
                 return acquiredSuccess;
             }
             finally
@@ -319,7 +330,7 @@ namespace AsyncSharp
             => WaitAsync(1, cancellationToken);
 
         public Task WaitAsync(int count, CancellationToken cancellationToken)
-            => WaitAsync(count, int.MaxValue, cancellationToken);
+            => WaitAsync(count, Timeout.Infinite, cancellationToken);
 
         /// <summary>
         /// Asynchronously blocks until either a successful acquire, a timeout, or a cancellation occurs.

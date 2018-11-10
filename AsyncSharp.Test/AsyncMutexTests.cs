@@ -31,11 +31,11 @@ namespace AsyncSharp.Test
             var mutex = new AsyncMutex();
             mutex.Lock();
 
-            var start = DateTime.UtcNow;
+            var start = Environment.TickCount;
             var capturedLock = mutex.Lock(100);
 
             Assert.False(capturedLock);
-            Assert.True(DateTime.UtcNow - start > TimeSpan.FromMilliseconds(100));
+            Assert.True(Environment.TickCount - start >= 90);
         }
 
         [Fact]
@@ -44,11 +44,11 @@ namespace AsyncSharp.Test
             var mutex = new AsyncMutex();
             mutex.Lock();
 
-            var start = DateTime.UtcNow;
+            var start = Environment.TickCount;
             var capturedLock = await mutex.LockAsync(100);
 
             Assert.False(capturedLock);
-            Assert.True(DateTime.UtcNow - start > TimeSpan.FromMilliseconds(100));
+            Assert.True(Environment.TickCount - start >= 90);
         }
 
         [Fact]
@@ -57,12 +57,12 @@ namespace AsyncSharp.Test
             var mutex = new AsyncMutex();
             mutex.Lock();
 
-            var start = DateTime.UtcNow;
+            var start = Environment.TickCount;
             using (var cancellationTokenSource = new CancellationTokenSource(100))
             {
                 Assert.Throws<OperationCanceledException>(()
                     => mutex.Lock(cancellationTokenSource.Token));
-                Assert.True(DateTime.UtcNow - start > TimeSpan.FromMilliseconds(100));
+                Assert.True(Environment.TickCount - start >= 90);
             }
         }
 
@@ -72,12 +72,12 @@ namespace AsyncSharp.Test
             var mutex = new AsyncMutex();
             mutex.Lock();
 
-            var start = DateTime.UtcNow;
+            var start = Environment.TickCount;
             using (var cancellationTokenSource = new CancellationTokenSource(100))
             {
                 await Assert.ThrowsAsync<OperationCanceledException>(()
                     => mutex.LockAsync(cancellationTokenSource.Token));
-                Assert.True(DateTime.UtcNow - start > TimeSpan.FromMilliseconds(100));
+                Assert.True(Environment.TickCount - start >= 90);
             }
         }
 
