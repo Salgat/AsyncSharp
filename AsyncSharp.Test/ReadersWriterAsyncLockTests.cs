@@ -14,10 +14,8 @@ namespace AsyncSharp.Test
         {
             var readersWriterAsyncLock = new ReadersWriterAsyncLock();
 
-            using (var upgradeableLock = readersWriterAsyncLock.AcquireUpgradeableReader())
-            using (var writerLock = upgradeableLock.UpgradeToWriter())
-            {
-            }
+            using var upgradeableLock = readersWriterAsyncLock.AcquireUpgradeableReader();
+            using var writerLock = upgradeableLock.UpgradeToWriter();
         }
 
         [Fact]
@@ -25,10 +23,8 @@ namespace AsyncSharp.Test
         {
             var readersWriterAsyncLock = new ReadersWriterAsyncLock();
 
-            using (var upgradeableLock = await readersWriterAsyncLock.AcquireUpgradeableReaderAsync())
-            using (var writerLock = await upgradeableLock.UpgradeToWriterAsync())
-            {
-            }
+            using var upgradeableLock = await readersWriterAsyncLock.AcquireUpgradeableReaderAsync();
+            using var writerLock = await upgradeableLock.UpgradeToWriterAsync();
         }
 
         [Fact]
@@ -41,12 +37,9 @@ namespace AsyncSharp.Test
             using (readersWriterAsyncLock.AcquireReader())
             {
                 var start = Environment.TickCount;
-                using (var cancellationTokenSource = new CancellationTokenSource(100))
-                {
-                    Assert.Throws<OperationCanceledException>(() =>
-                        readersWriterAsyncLock.AcquireWriter(cancellationTokenSource.Token));
-                    Assert.True(Environment.TickCount - start >= 90);
-                }
+                using var cancellationTokenSource = new CancellationTokenSource(100);
+                Assert.Throws<OperationCanceledException>(() => readersWriterAsyncLock.AcquireWriter(cancellationTokenSource.Token));
+                Assert.True(Environment.TickCount - start >= 90);
             }
         }
 
@@ -60,12 +53,10 @@ namespace AsyncSharp.Test
             using (await readersWriterAsyncLock.AcquireReaderAsync())
             {
                 var start = Environment.TickCount;
-                using (var cancellationTokenSource = new CancellationTokenSource(100))
-                {
-                    await Assert.ThrowsAsync<OperationCanceledException>(() =>
-                        readersWriterAsyncLock.AcquireWriterAsync(cancellationTokenSource.Token));
-                    Assert.True(Environment.TickCount - start >= 90);
-                }
+                using var cancellationTokenSource = new CancellationTokenSource(100);
+                await Assert.ThrowsAsync<OperationCanceledException>(() =>
+                    readersWriterAsyncLock.AcquireWriterAsync(cancellationTokenSource.Token));
+                Assert.True(Environment.TickCount - start >= 90);
             }
         }
     }

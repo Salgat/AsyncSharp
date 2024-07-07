@@ -4,8 +4,4 @@
     <TargetFramework>netstandard2.0</TargetFramework>
   </PropertyGroup>
 
-  <ItemGroup>
-    <None Remove="AsyncSemaphore.cs~RF1541dd20.TMP" />
-  </ItemGroup>
-
 </Project>
