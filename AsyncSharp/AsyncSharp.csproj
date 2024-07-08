@@ -3,7 +3,7 @@
   <PropertyGroup>
 	<OutputType>Library</OutputType>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <Title>$(AssemblyName)</Title>
     <Authors>Austin Salgat</Authors>
     <Company />
@@ -15,7 +15,8 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>async;semaphore;mutex;readerwriter;reader-writer</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
-    <IncludeSymbols>False</IncludeSymbols>
+	<IncludeSymbols>true</IncludeSymbols>
+	<SymbolPackageFormat>snupkg</SymbolPackageFormat>
 	<DebugType>portable</DebugType>
   </PropertyGroup>
 
