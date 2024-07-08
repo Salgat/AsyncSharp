@@ -1,7 +1,33 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+	<OutputType>Library</OutputType>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Title>$(AssemblyName)</Title>
+    <Authors>Austin Salgat</Authors>
+    <Company />
+    <Description>Provides async friendly mutex, semaphore, and upgradeable reader-writer lock.</Description>
+    <Copyright>2024</Copyright>
+    <PackageProjectUrl>https://github.com/Salgat/AsyncSharp</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/Salgat/AsyncSharp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>async;semaphore;mutex;readerwriter;reader-writer</PackageTags>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <IncludeSymbols>False</IncludeSymbols>
+	<DebugType>portable</DebugType>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\LICENSE">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
 
 </Project>
