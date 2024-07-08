@@ -1,4 +1,8 @@
 # AsyncSharp
+
+![NuGet](https://img.shields.io/nuget/v/AsyncSharp)
+![NuGet](https://img.shields.io/nuget/dt/AsyncSharp)
+
 A collection of async friendly classes for resource control, including **AsyncSemaphore**, **AsyncMutex**, and **ReadersWriterAsyncLock**. All classes provide both synchronous and asynchronous methods that expose both timeouts and cancellation token support.
 
 ## AsyncSemaphore
