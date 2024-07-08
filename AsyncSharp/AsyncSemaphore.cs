@@ -1,7 +1,7 @@
 ﻿/*
 MIT License
 
-Copyright (c) 2018 Austin Salgat
+Copyright (c) 2024 Austin Salgat
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,7 @@ SOFTWARE.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -43,9 +44,9 @@ namespace AsyncSharp
         private readonly object _lock = new object(); // Grants exclusive access to _currentCount and _queuedAcquireRequests
 
         // Keeps track of all acquire waiters. Wait/WaitAsync can only add entries, and Release/ReleaseAll and failed Wait/WaitAsync can only remove entries.
-        private readonly IList<IQueuedAcquire> _queuedAcquireRequests = new List<IQueuedAcquire>();
+        internal readonly List<IQueuedAcquire> _queuedAcquireRequests = new List<IQueuedAcquire>();
 
-        private interface IQueuedAcquire
+        internal interface IQueuedAcquire
         {
             int Count { get; }
             void GrantAcquire();
@@ -95,7 +96,7 @@ namespace AsyncSharp
             public int Count { get; }
             public Task WaiterTask => _taskCompletionSource.Task;
             private readonly TaskCompletionSource<bool> _taskCompletionSource = 
-                new TaskCompletionSource<bool>(TaskContinuationOptions.RunContinuationsAsynchronously);
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
             public QueuedAsynchronousAcquire(int count)
             {
@@ -150,7 +151,10 @@ namespace AsyncSharp
         /// Use this if starvation due to high contention is a concern.</param>
         public AsyncSemaphore(int startingCount, int maxCount, bool fair)
         {
-            Debug.Assert(startingCount <= maxCount);
+            if (startingCount > maxCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(startingCount), $"Starting count '{startingCount}' cannot exceed max count '{maxCount}'.");
+            }
 
             _currentCount = startingCount;
             _maxCount = maxCount;
@@ -214,7 +218,6 @@ namespace AsyncSharp
         /// <returns>true if the Wait successfully acquired the count.</returns>
         public bool Wait(int count, int timeout, CancellationToken cancellationToken)
         {
-            var startTime = (uint)Environment.TickCount;
             if (count > _maxCount)
             {
                 throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be less than maximum configured count of '{_maxCount}'.");
@@ -223,24 +226,20 @@ namespace AsyncSharp
             {
                 throw new ArgumentOutOfRangeException($"Requested timeout '{timeout}' must be greater than or equal to -1.");
             }
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             // TODO: Add support for CancellationToken where a callback sets the queued waiter as failed then releases it
+            var startTime = (uint)Environment.TickCount;
             var acquiredSuccess = false;
             QueuedSynchronousAcquire queuedAcquire = null;
             try
             {
                 lock (_lock)
                 {
-                    var currentCount = _currentCount;
-                    if (currentCount >= count)
+                    if(_currentCount >= count)
                     {
                         // Count available, immediately grant
-                        _currentCount = currentCount - count;
+                        _currentCount -= count;
                         return true;
                     }
 
@@ -255,7 +254,7 @@ namespace AsyncSharp
                 }
                 else
                 {
-                    var timeToWait = timeout - (int)((uint)Environment.TickCount - startTime);
+                    var timeToWait = Math.Max(0, timeout - (int)((uint)Environment.TickCount - startTime));
                     acquiredSuccess = queuedAcquire.Wait(timeToWait, cancellationToken);
                 }
                 return acquiredSuccess;
@@ -354,11 +353,10 @@ namespace AsyncSharp
             QueuedAsynchronousAcquire queuedAcquire;
             lock (_lock)
             {
-                var currentCount = _currentCount;
-                if (currentCount >= count)
+                if (_currentCount >= count)
                 {
                     // Count available, immediately grant
-                    _currentCount = currentCount - count;
+                    _currentCount -= count;
                     return true;
                 }
 
@@ -367,9 +365,7 @@ namespace AsyncSharp
                 _queuedAcquireRequests.Add(queuedAcquire);
             }
             
-            using (var cancellationTokenSource = cancellationToken.CanBeCanceled ?
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, default(CancellationToken)) :
-                new CancellationTokenSource())
+            using (var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
                 var queuedAcquireTask = queuedAcquire.WaiterTask;
                 var waitCompleted = await Task.WhenAny(queuedAcquireTask, Task.Delay(timeout, cancellationTokenSource.Token)).ConfigureAwait(false);
@@ -386,6 +382,7 @@ namespace AsyncSharp
                 RemoveFailedWaiter(queuedAcquire);
             }
             cancellationToken.ThrowIfCancellationRequested();
+            if (timeout == Timeout.Infinite) throw new TimeoutException("Timeout argument was infinite but failed to wait on semaphore.");
             return false;
         }
 
@@ -405,7 +402,7 @@ namespace AsyncSharp
                 }
 
                 var queuePosition = 0;
-                while (queuePosition < _queuedAcquireRequests.Count)
+                while (currentCount != 0 && queuePosition < _queuedAcquireRequests.Count)
                 {
                     var queueItem = _queuedAcquireRequests[queuePosition];
                     if (currentCount >= queueItem.Count)
@@ -413,7 +410,7 @@ namespace AsyncSharp
                         // Count available to acquire
                         queueItem.GrantAcquire();
                         currentCount -= queueItem.Count;
-                        _queuedAcquireRequests.RemoveAt(queuePosition);
+                        _queuedAcquireRequests.Remove(queueItem);
                     }
                     else if (!_fair)
                     {
@@ -447,10 +444,11 @@ namespace AsyncSharp
 
             lock (_lock)
             {
-                for (var i = 0; i < _queuedAcquireRequests.Count; ++i)
+                foreach (var queuedAcquireRequest in _queuedAcquireRequests)
                 {
-                    _queuedAcquireRequests[i].GrantAcquire();
+                    queuedAcquireRequest.GrantAcquire();
                 }
+                _queuedAcquireRequests.Clear();
                 _currentCount = newCount;
             }
         }

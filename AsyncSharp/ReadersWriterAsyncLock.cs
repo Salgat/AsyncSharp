@@ -1,7 +1,7 @@
 ﻿/*
 MIT License
 
-Copyright (c) 2018 Austin Salgat
+Copyright (c) 2024 Austin Salgat
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -35,7 +35,7 @@ namespace AsyncSharp
     {
         public sealed class UpgradeableReaderAsyncLock : IDisposable
         {
-            private readonly ReadersWriterAsyncLock _readersWriterAsyncLock;
+            internal readonly ReadersWriterAsyncLock _readersWriterAsyncLock;
             private readonly Action _disposeAction;
             private readonly int _readerCount;
 
@@ -68,7 +68,7 @@ namespace AsyncSharp
 
         public int MaxReaders { get; }
 
-        private readonly AsyncSemaphore _asyncSemaphore;
+        internal readonly AsyncSemaphore _asyncSemaphore;
 
         public ReadersWriterAsyncLock() : this(int.MaxValue, true) { }
         

@@ -218,12 +218,10 @@ namespace AsyncSharp.Test
         {
             var semaphore = new AsyncSemaphore(0, 1);
             var start = Environment.TickCount;
-            using (var cancellationToken = new CancellationTokenSource(100))
-            {
-                Assert.Throws<OperationCanceledException>(() 
-                    => semaphore.Wait(cancellationToken.Token));
-                Assert.True(Environment.TickCount - start >= 90);
-            }
+            using var cancellationToken = new CancellationTokenSource(100);
+            Assert.Throws<OperationCanceledException>(() 
+                => semaphore.Wait(cancellationToken.Token));
+            Assert.True(Environment.TickCount - start >= 90);
         }
 
         [Fact]
@@ -231,12 +229,9 @@ namespace AsyncSharp.Test
         {
             var semaphore = new AsyncSemaphore(0, 1);
             var start = Environment.TickCount;
-            using (var cancellationTokenSource = new CancellationTokenSource(100))
-            {
-                await Assert.ThrowsAsync<OperationCanceledException>(() 
-                    => semaphore.WaitAsync(cancellationTokenSource.Token));
-                Assert.True(Environment.TickCount - start >= 90);
-            }
+            using var cancellationTokenSource = new CancellationTokenSource(100);
+            await Assert.ThrowsAsync<OperationCanceledException>(() => semaphore.WaitAsync(cancellationTokenSource.Token));
+            Assert.True(Environment.TickCount - start >= 90);
         }
         
         [Fact]
@@ -269,22 +264,64 @@ namespace AsyncSharp.Test
         public void Wait_CancellationToken_Success()
         {
             var semaphore = new AsyncSemaphore(0, 1);
-            using (var cancellationToken = new CancellationTokenSource(100))
-            {
-                Assert.Throws<OperationCanceledException>(() 
-                    => semaphore.Wait(cancellationToken.Token));
-            }
+            using var cancellationToken = new CancellationTokenSource(100);
+            Assert.Throws<OperationCanceledException>(() => semaphore.Wait(cancellationToken.Token));
         }
 
         [Fact]
         public async Task WaitAsync_CancellationToken_Success()
         {
             var semaphore = new AsyncSemaphore(0, 1);
-            using (var cancellationTokenSource = new CancellationTokenSource(100))
+            using var cancellationTokenSource = new CancellationTokenSource(100);
+            await Assert.ThrowsAsync<OperationCanceledException>(() => semaphore.WaitAsync(cancellationTokenSource.Token));
+        }
+
+        [Fact]
+        public async Task Wait_Parallel_Success()
+        {
+            var lockObject = new object();
+            var beforeCount = 0;
+            var afterCount = 0;
+            void IncrementBefore() { lock (lockObject) { beforeCount++; } }
+            void IncrementAfter() { lock (lockObject) { afterCount++; } }
+
+            var semaphore = new AsyncSemaphore(100, 100);
+            var parallelOptions = new ParallelOptions()
             {
-                await Assert.ThrowsAsync<OperationCanceledException>(() 
-                    => semaphore.WaitAsync(cancellationTokenSource.Token));
+                MaxDegreeOfParallelism = 200
+            };
+            var waitTask = Parallel.ForEachAsync(Enumerable.Range(0, 200), parallelOptions, async (_, ct) =>
+            {
+                IncrementBefore();
+                await semaphore.WaitAsync(ct);
+                IncrementAfter();
+            });
+
+            // Wait for the first 100 semaphore requests to acquire and the last 100 to be pending
+            while (true)
+            {
+                lock (lockObject)
+                {
+                    if (beforeCount == 200 && afterCount == 100) break;
+                }
+                await Task.Delay(100);
             }
+            lock (lockObject)
+            {
+                Assert.Equal(100, semaphore._queuedAcquireRequests.Count);
+                Assert.Equal(0, semaphore.CurrentCount);
+                Assert.Equal(200, beforeCount);
+                Assert.Equal(100, afterCount);
+            }
+
+            // Now release 100 and ensure all 100 remaining semaphore requests acquire.
+            foreach (var _ in Enumerable.Range(0, 100))
+            {
+                semaphore.Release();
+            }
+            await waitTask;
+            Assert.Equal(0, semaphore.CurrentCount);
+            Assert.Empty(semaphore._queuedAcquireRequests);
         }
 
         #region Explicit
