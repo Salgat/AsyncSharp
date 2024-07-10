@@ -13,7 +13,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/Salgat/AsyncSharp</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>async;semaphore;mutex;readerwriter;reader-writer</PackageTags>
+    <PackageTags>async;semaphore;mutex;readerswriter;readers-writer;readers-writers;readers;writers;lock;single-writer;multi-reader;push;msrw</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
