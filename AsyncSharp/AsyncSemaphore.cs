@@ -148,12 +148,17 @@ namespace AsyncSharp
         /// <param name="startingCount">The amount of count immediately available to acquire.</param>
         /// <param name="maxCount">The maxmimum value that CurrentCount can reach.</param>
         /// <param name="fair">Whether pending Waits are treated with fairness. If true, order of Waits is respected for acquiring count. 
-        /// Use this if starvation due to high contention is a concern.</param>
+        /// Use this if starvation due to high contention is a concern. If this is false, ordering is still respected except in cases 
+        /// where a release cannot free up the next waiter, but can free up a later waiter with a lower count request.</param>
         public AsyncSemaphore(int startingCount, int maxCount, bool fair)
         {
             if (startingCount > maxCount)
             {
                 throw new ArgumentOutOfRangeException(nameof(startingCount), $"Starting count '{startingCount}' cannot exceed max count '{maxCount}'.");
+            }
+            if (startingCount < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(startingCount), $"Starting count '{startingCount}' must be a positive number.");
             }
 
             _currentCount = startingCount;
@@ -222,13 +227,16 @@ namespace AsyncSharp
             {
                 throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be less than maximum configured count of '{_maxCount}'.");
             }
+            if (count < 0)
+            {
+                throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be a non-negative number");
+            }
             if (timeout < -1) // Timeout.Infinite == -1
             {
                 throw new ArgumentOutOfRangeException($"Requested timeout '{timeout}' must be greater than or equal to -1.");
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            // TODO: Add support for CancellationToken where a callback sets the queued waiter as failed then releases it
             var startTime = (uint)Environment.TickCount;
             var acquiredSuccess = false;
             QueuedSynchronousAcquire queuedAcquire = null;
@@ -344,11 +352,15 @@ namespace AsyncSharp
             {
                 throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be less than maximum configured count of '{_maxCount}'.");
             }
-
-            if (cancellationToken.IsCancellationRequested)
+            if (count < 0)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be a non-negative number");
             }
+            if (timeout < -1) // Timeout.Infinite == -1
+            {
+                throw new ArgumentOutOfRangeException($"Requested timeout '{timeout}' must be greater than or equal to -1.");
+            }
+            cancellationToken.ThrowIfCancellationRequested();
 
             QueuedAsynchronousAcquire queuedAcquire;
             lock (_lock)

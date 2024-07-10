@@ -70,6 +70,9 @@ namespace AsyncSharp
 
         internal readonly AsyncSemaphore _asyncSemaphore;
 
+        /// <summary>
+        /// Allows for int.MaxValue readers with fair ordering of lock acquisition.
+        /// </summary>
         public ReadersWriterAsyncLock() : this(int.MaxValue, true) { }
         
         public ReadersWriterAsyncLock(bool fair) : this(int.MaxValue, fair) { }
