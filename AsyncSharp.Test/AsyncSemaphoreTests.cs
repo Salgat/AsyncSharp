@@ -212,6 +212,42 @@ namespace AsyncSharp.Test
             Assert.False(acquiredSemaphore);
             Assert.True(timeWaited >= 90);
         }
+
+        [Fact]
+        public async Task WaitAsync_Priority()
+        {
+            var currentOrder = false; // We alternate the order of the two waiter acquires
+            (Task<bool> Normal, Task<bool> Priority) GenerateWaiterTasks()
+            {
+                var semaphore = new AsyncSemaphore(0, 1);
+                Task<bool> normalSemaphoreWaiter;
+                Task<bool> prioritySemaphoreWaiter;
+                if (currentOrder)
+                {
+                    normalSemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, false, CancellationToken.None);
+                    prioritySemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, true, CancellationToken.None);
+                }
+                else
+                {
+                    prioritySemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, true, CancellationToken.None);
+                    normalSemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, false, CancellationToken.None);
+                }
+                currentOrder = !currentOrder;
+                semaphore.Release(1);
+
+                return (normalSemaphoreWaiter, prioritySemaphoreWaiter);
+            }
+
+            for (var i = 0; i < 10000; ++i)
+            {
+                var (normalSemaphoreWaiter, prioritySemaphoreWaiter) = GenerateWaiterTasks();
+                var finishedWaiter = await Task.WhenAny(normalSemaphoreWaiter, prioritySemaphoreWaiter);
+                Assert.Equal(prioritySemaphoreWaiter, finishedWaiter);
+                Assert.True(finishedWaiter.Result);
+                Assert.True(prioritySemaphoreWaiter.IsCompletedSuccessfully);
+                Assert.False(normalSemaphoreWaiter.IsCompletedSuccessfully);
+            }
+        }
         
         [Fact]
         public void Wait_CancellationToken()
