@@ -33,18 +33,38 @@ namespace AsyncSharp
     /// </summary>
     public class ReadersWriterAsyncLock
     {
+        public enum LockPriority
+        {
+            /// <summary>
+            /// Readers always have priority for acquiring the lock.
+            /// </summary>
+            Readers,
+
+            /// <summary>
+            /// Writers always have priority for acquiring the lock.
+            /// </summary>
+            Writers,
+
+            /// <summary>
+            /// Lock acquisition is done in the order the requests were made, regardless of whether a reader or writer.
+            /// </summary>
+            FirstInFirstOut,
+
+            /// <summary>
+            /// Lock acquisition is done in the order the requests were made, regardless of whether a reader or writer,
+            /// but a writer request will be skipped for any pending readers if any other reader is still holding a lock.
+            /// </summary>
+            FirstInFirstOutUnfair
+        }
+
         public sealed class UpgradeableReaderAsyncLock : IDisposable
         {
             internal readonly ReadersWriterAsyncLock _readersWriterAsyncLock;
             private readonly Action _disposeAction;
-            private readonly int _readerCount;
 
-            public int ReaderCount => _readerCount;
-
-            internal UpgradeableReaderAsyncLock(ReadersWriterAsyncLock readersWriterAsyncLock, int readerCount, Action disposeAction)
+            internal UpgradeableReaderAsyncLock(ReadersWriterAsyncLock readersWriterAsyncLock, Action disposeAction)
             {
                 _readersWriterAsyncLock = readersWriterAsyncLock;
-                _readerCount = readerCount;
                 _disposeAction = disposeAction;
             }
 
@@ -52,13 +72,13 @@ namespace AsyncSharp
                 => UpgradeToWriter(CancellationToken.None);
 
             public IDisposable UpgradeToWriter(CancellationToken cancellationToken)
-                => _readersWriterAsyncLock.AcquireReaders(_readersWriterAsyncLock.MaxReaders - _readerCount, cancellationToken);
+                => _readersWriterAsyncLock.AcquireReaders(_readersWriterAsyncLock.MaxReaders - 1, cancellationToken);
             
             public Task<IDisposable> UpgradeToWriterAsync()
                 => UpgradeToWriterAsync(CancellationToken.None);
 
             public Task<IDisposable> UpgradeToWriterAsync(CancellationToken cancellationToken)
-                => _readersWriterAsyncLock.AcquireReadersAsync(_readersWriterAsyncLock.MaxReaders - _readerCount, cancellationToken);
+                => _readersWriterAsyncLock.AcquireReadersAsync(_readersWriterAsyncLock.MaxReaders - 1, cancellationToken);
 
             public void Dispose()
             {
@@ -91,6 +111,30 @@ namespace AsyncSharp
             _asyncSemaphore = new AsyncSemaphore(maxReaders, maxReaders, fair);
         }
 
+        public ReadersWriterAsyncLock(int maxReaders, LockPriority lockPriority)
+        {
+            MaxReaders = maxReaders;
+            AsyncSemaphore.WaiterPriority waiterPriority;
+            switch (lockPriority)
+            {
+                case LockPriority.Writers:
+                    waiterPriority = AsyncSemaphore.WaiterPriority.HighToLow;
+                    break;
+                case LockPriority.Readers:
+                    waiterPriority = AsyncSemaphore.WaiterPriority.LowToHigh;
+                    break;
+                case LockPriority.FirstInFirstOut:
+                    waiterPriority = AsyncSemaphore.WaiterPriority.FirstInFirstOut;
+                    break;
+                case LockPriority.FirstInFirstOutUnfair:
+                    waiterPriority = AsyncSemaphore.WaiterPriority.FirstInFirstOutUnfair;
+                    break;
+                default:
+                    throw new ArgumentException($"{nameof(LockPriority)} value '{lockPriority}' not recognized.");
+            }
+            _asyncSemaphore = new AsyncSemaphore(maxReaders, maxReaders, waiterPriority);
+        }
+
         #region Readers
 
         #region Synchronous
@@ -120,7 +164,7 @@ namespace AsyncSharp
                 throw new ArgumentOutOfRangeException($"'{nameof(readerCount)}' cannot exceed '{nameof(MaxReaders)}'.");
             }
 
-            return new UpgradeableReaderAsyncLock(this, readerCount, _asyncSemaphore.WaitAndRelease(1, cancellationToken).Dispose);
+            return new UpgradeableReaderAsyncLock(this, _asyncSemaphore.WaitAndRelease(1, cancellationToken).Dispose);
         }
 
         #endregion
@@ -146,7 +190,7 @@ namespace AsyncSharp
             => AcquireUpgradeableReadersAsync(readerCount, CancellationToken.None);
 
         public async Task<UpgradeableReaderAsyncLock> AcquireUpgradeableReadersAsync(int readerCount, CancellationToken cancellationToken)
-            => new UpgradeableReaderAsyncLock(this, 1, (await _asyncSemaphore.WaitAndReleaseAsync(readerCount, cancellationToken).ConfigureAwait(false)).Dispose);
+            => new UpgradeableReaderAsyncLock(this, (await _asyncSemaphore.WaitAndReleaseAsync(readerCount, cancellationToken).ConfigureAwait(false)).Dispose);
 
         #endregion
 

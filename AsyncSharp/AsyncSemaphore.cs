@@ -38,9 +38,33 @@ namespace AsyncSharp
     /// </summary>
     public class AsyncSemaphore
     {
+        public enum WaiterPriority 
+        { 
+            /// <summary>
+            /// Lowest count Waiters are prioritized.
+            /// </summary>
+            LowToHigh,
+
+            /// <summary>
+            /// Highest count Waiters are prioritized.
+            /// </summary>
+            HighToLow,
+
+            /// <summary>
+            /// Waiters are prioritized by the order they were added, regardless of count.
+            /// </summary>
+            FirstInFirstOut,
+
+            /// <summary>
+            /// Waiters are prioritized by the order they were added, but waiters can be skipped 
+            /// if a later waiter is able to be released by the available count.
+            /// </summary>
+            FirstInFirstOutUnfair
+        }
+
         private int _currentCount; // Count available to acquire (Waits asking for more than available are blocked)
         private readonly int _maxCount; // Max count that can be acquired
-        private readonly bool _fair; // Whether ordering is respected for queued Acquire requests
+        private readonly WaiterPriority _priority;
         private readonly object _lock = new object(); // Grants exclusive access to _currentCount and _queuedAcquireRequests
 
         // Keeps track of all acquire waiters. Wait/WaitAsync can only add entries, and Release/ReleaseAll and failed Wait/WaitAsync can only remove entries.
@@ -163,7 +187,23 @@ namespace AsyncSharp
 
             _currentCount = startingCount;
             _maxCount = maxCount;
-            _fair = fair;
+            _priority = fair ? WaiterPriority.FirstInFirstOut : WaiterPriority.FirstInFirstOutUnfair;
+        }
+
+        public AsyncSemaphore(int startingCount, int maxCount, WaiterPriority waiterPriority)
+        {
+            if (startingCount > maxCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(startingCount), $"Starting count '{startingCount}' cannot exceed max count '{maxCount}'.");
+            }
+            if (startingCount < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(startingCount), $"Starting count '{startingCount}' must be a positive number.");
+            }
+
+            _currentCount = startingCount;
+            _maxCount = maxCount;
+            _priority = waiterPriority;
         }
 
         public IDisposable WaitAndReleaseAll()
@@ -253,7 +293,7 @@ namespace AsyncSharp
 
                     // Count not available yet, add waiter to queue
                     queuedAcquire = new QueuedSynchronousAcquire(count);
-                    _queuedAcquireRequests.Add(queuedAcquire);
+                    AddToRequests(queuedAcquire);
                 }
 
                 if (timeout == Timeout.Infinite)
@@ -374,7 +414,7 @@ namespace AsyncSharp
 
                 // Count not available yet, add waiter to queue
                 queuedAcquire = new QueuedAsynchronousAcquire(count);
-                _queuedAcquireRequests.Add(queuedAcquire);
+                AddToRequests(queuedAcquire);
             }
             
             using (var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
@@ -424,7 +464,7 @@ namespace AsyncSharp
                         currentCount -= queueItem.Count;
                         _queuedAcquireRequests.Remove(queueItem);
                     }
-                    else if (!_fair)
+                    else if (_priority == WaiterPriority.FirstInFirstOutUnfair)
                     {
                         ++queuePosition;
                     }
@@ -462,6 +502,54 @@ namespace AsyncSharp
                 }
                 _queuedAcquireRequests.Clear();
                 _currentCount = newCount;
+            }
+        }
+
+        private void AddToRequests(IQueuedAcquire queuedAcquire)
+        {
+            int index;
+            switch (_priority)
+            {
+                case WaiterPriority.LowToHigh:
+                    if (queuedAcquire.Count == 1)
+                    {
+                        // 1 is the lowest valid count (a count of 0 skips the waiter and immediately grants acquire)
+                        _queuedAcquireRequests.Add(queuedAcquire);
+                    }
+                    else
+                    {
+                        index = _queuedAcquireRequests.BinarySearch(queuedAcquire, _queuedAcquireLowToHighComparer);
+                        _queuedAcquireRequests.Insert(index >= 0 ? index : ~index, queuedAcquire);
+                    }
+                    break;
+                case WaiterPriority.HighToLow:
+                    index = _queuedAcquireRequests.BinarySearch(queuedAcquire, _queuedAcquireHighToLowComparer);
+                    _queuedAcquireRequests.Insert(index >= 0 ? index : ~index, queuedAcquire);
+                    break;
+                case WaiterPriority.FirstInFirstOut:
+                case WaiterPriority.FirstInFirstOutUnfair:
+                    _queuedAcquireRequests.Add(queuedAcquire);
+                    break;
+                default:
+                    throw new NotImplementedException($"Priority value {_priority} not recognized.");
+            }
+        }
+
+        private static readonly QueuedAcquireLowToHighComparer _queuedAcquireLowToHighComparer = new QueuedAcquireLowToHighComparer();
+        private class QueuedAcquireLowToHighComparer : IComparer<IQueuedAcquire>
+        {
+            public int Compare(IQueuedAcquire x, IQueuedAcquire y)
+            {
+                return x.Count.CompareTo(y.Count);
+            }
+        }
+
+        private static readonly QueuedAcquireHighToLowComparer _queuedAcquireHighToLowComparer = new QueuedAcquireHighToLowComparer();
+        private class QueuedAcquireHighToLowComparer : IComparer<IQueuedAcquire>
+        {
+            public int Compare(IQueuedAcquire x, IQueuedAcquire y)
+            {
+                return y.Count.CompareTo(x.Count);
             }
         }
     }
