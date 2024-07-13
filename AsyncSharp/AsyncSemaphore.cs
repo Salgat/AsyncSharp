@@ -59,8 +59,17 @@ namespace AsyncSharp
             /// Waiters are prioritized by the order they were added, but waiters can be skipped 
             /// if a later waiter is able to be released by the available count.
             /// </summary>
-            FirstInFirstOutUnfair
+            FirstInFirstOutUnfair,
+
+            /// <summary>
+            /// Ordering of waiters is not respected, and priority may sometimes not be respected
+            /// when performance is improved. This option is dangerous, since it tends to prioritize
+            /// newer waiters, allowing for easier starvation of waiters.
+            /// </summary>
+            Unfair
         }
+
+        public static int DefaultPriority => 0;
 
         private int _currentCount; // Count available to acquire (Waits asking for more than available are blocked)
         private readonly int _maxCount; // Max count that can be acquired
@@ -68,7 +77,9 @@ namespace AsyncSharp
         private readonly object _lock = new object(); // Grants exclusive access to _currentCount and _queuedAcquireRequests
 
         // Keeps track of all acquire waiters. Wait/WaitAsync can only add entries, and Release/ReleaseAll and failed Wait/WaitAsync can only remove entries.
-        internal readonly List<IQueuedAcquire> _queuedAcquireRequests = new List<IQueuedAcquire>();
+        internal readonly Dictionary<int, List<IQueuedAcquire>> _queuedAcquireRequests = new Dictionary<int, List<IQueuedAcquire>>();
+        internal readonly SortedSet<int> _activePriorities = new SortedSet<int>(_priorityHighToLowComparer);
+        private readonly List<int> _pendingPriorityRemovals = new List<int>(); // This is not local to the function to avoid extra allocations
 
         internal interface IQueuedAcquire
         {
@@ -253,15 +264,19 @@ namespace AsyncSharp
 
         public void Wait(int count, CancellationToken cancellationToken)
             => Wait(count, Timeout.Infinite, cancellationToken);
-        
+
+        public bool Wait(int count, int timeout, CancellationToken cancellationToken)
+            => Wait(count, timeout, DefaultPriority, cancellationToken);
+
         /// <summary>
         /// Synchronously blocks until either a successful acquire, a timeout, or a cancellation occurs.
         /// </summary>
         /// <param name="count"></param>
         /// <param name="timeout"></param>
         /// <param name="cancellationToken"></param>
+        /// <param name="forcePriority">If true, will prioritize this waiter over normal waiters.</param>
         /// <returns>true if the Wait successfully acquired the count.</returns>
-        public bool Wait(int count, int timeout, CancellationToken cancellationToken)
+        public bool Wait(int count, int timeout, int priority, CancellationToken cancellationToken)
         {
             if (count > _maxCount)
             {
@@ -284,7 +299,7 @@ namespace AsyncSharp
             {
                 lock (_lock)
                 {
-                    if(_currentCount >= count)
+                    if(_priority == WaiterPriority.Unfair && _currentCount >= count)
                     {
                         // Count available, immediately grant
                         _currentCount -= count;
@@ -293,7 +308,8 @@ namespace AsyncSharp
 
                     // Count not available yet, add waiter to queue
                     queuedAcquire = new QueuedSynchronousAcquire(count);
-                    AddToRequests(queuedAcquire);
+                    AddToRequests(queuedAcquire, priority);
+                    Release(0); // Flush any pending waiters
                 }
 
                 if (timeout == Timeout.Infinite)
@@ -315,7 +331,7 @@ namespace AsyncSharp
                     {
                         lock (_lock)
                         {
-                            RemoveFailedWaiter(queuedAcquire);
+                            RemoveFailedWaiter(queuedAcquire, priority);
                         }
                     }
                     queuedAcquire.Dispose();
@@ -329,12 +345,10 @@ namespace AsyncSharp
         /// which needs to be released again.
         /// </summary>
         /// <param name="queuedAcquire">The IQueudAcquire to remove from the queue.</param>
-        private void RemoveFailedWaiter(IQueuedAcquire queuedAcquire)
+        private void RemoveFailedWaiter(IQueuedAcquire queuedAcquire, int priority)
         {
-            if (!_queuedAcquireRequests.Remove(queuedAcquire))
-            {
-                Release(queuedAcquire.Count);
-            }
+            if (_queuedAcquireRequests.TryGetValue(priority, out var queuedAcquireRequests) && queuedAcquireRequests.Remove(queuedAcquire)) return;
+            Release(queuedAcquire.Count);
         }
         
         public Task<IDisposable> WaitAndReleaseAllAsync()
@@ -379,14 +393,18 @@ namespace AsyncSharp
         public Task WaitAsync(int count, CancellationToken cancellationToken)
             => WaitAsync(count, Timeout.Infinite, cancellationToken);
 
+        public Task<bool> WaitAsync(int count, int timeout, CancellationToken cancellationToken)
+            => WaitAsync(count, timeout, DefaultPriority, cancellationToken);
+
         /// <summary>
         /// Asynchronously blocks until either a successful acquire, a timeout, or a cancellation occurs.
         /// </summary>
         /// <param name="count"></param>
         /// <param name="timeout"></param>
         /// <param name="cancellationToken"></param>
+        /// <param name="forcePriority">If true, will prioritize this waiter over normal waiters.</param>
         /// <returns></returns>
-        public async Task<bool> WaitAsync(int count, int timeout, CancellationToken cancellationToken)
+        public async Task<bool> WaitAsync(int count, int timeout, int priority, CancellationToken cancellationToken)
         {
             if (count > _maxCount)
             {
@@ -405,7 +423,7 @@ namespace AsyncSharp
             QueuedAsynchronousAcquire queuedAcquire;
             lock (_lock)
             {
-                if (_currentCount >= count)
+                if (_priority == WaiterPriority.Unfair && _currentCount >= count)
                 {
                     // Count available, immediately grant
                     _currentCount -= count;
@@ -414,7 +432,8 @@ namespace AsyncSharp
 
                 // Count not available yet, add waiter to queue
                 queuedAcquire = new QueuedAsynchronousAcquire(count);
-                AddToRequests(queuedAcquire);
+                AddToRequests(queuedAcquire, priority);
+                Release(0); // Flush any pending waiters
             }
             
             using (var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
@@ -431,7 +450,7 @@ namespace AsyncSharp
 
             lock (_lock)
             {
-                RemoveFailedWaiter(queuedAcquire);
+                RemoveFailedWaiter(queuedAcquire, priority);
             }
             cancellationToken.ThrowIfCancellationRequested();
             if (timeout == Timeout.Infinite) throw new TimeoutException("Timeout argument was infinite but failed to wait on semaphore.");
@@ -446,6 +465,7 @@ namespace AsyncSharp
             lock (_lock)
             {
                 var currentCount = _currentCount + count;
+                if (currentCount == 0) return; // A count of 0 immediately returns, since it can't release anything
                 if (currentCount > _maxCount)
                 {
                     throw new ArgumentOutOfRangeException(
@@ -453,29 +473,51 @@ namespace AsyncSharp
                         $"which exceeds the maximum count of '{_maxCount}'.");
                 }
 
-                var queuePosition = 0;
-                while (currentCount != 0 && queuePosition < _queuedAcquireRequests.Count)
+                try
                 {
-                    var queueItem = _queuedAcquireRequests[queuePosition];
-                    if (currentCount >= queueItem.Count)
+                    foreach (var priority in _activePriorities)
                     {
-                        // Count available to acquire
-                        queueItem.GrantAcquire();
-                        currentCount -= queueItem.Count;
-                        _queuedAcquireRequests.Remove(queueItem);
-                    }
-                    else if (_priority == WaiterPriority.FirstInFirstOutUnfair)
-                    {
-                        ++queuePosition;
-                    }
-                    else
-                    {
-                        // Next queued item requires more count and fairness prevents us from checking any later waiters
-                        break;
+                        var queuedAcquireRequests = _queuedAcquireRequests[priority];
+                        var queuePosition = 0;
+                        while (currentCount != 0 && queuePosition < queuedAcquireRequests.Count)
+                        {
+                            var queueItem = queuedAcquireRequests[queuePosition];
+                            if (currentCount >= queueItem.Count)
+                            {
+                                // Count available to acquire
+                                queueItem.GrantAcquire();
+                                currentCount -= queueItem.Count;
+                                queuedAcquireRequests.RemoveAt(queuePosition);
+
+                                // Cleanup if priority's queue is emptied
+                                if (queuedAcquireRequests.Count == 0)
+                                {
+                                    _pendingPriorityRemovals.Add(priority);
+                                    _queuedAcquireRequests.Remove(priority);
+                                    break;
+                                }
+                            }
+                            else if (_priority == WaiterPriority.FirstInFirstOutUnfair || _priority == WaiterPriority.Unfair)
+                            {
+                                ++queuePosition;
+                            }
+                            else
+                            {
+                                break;
+                            }
+                        }
+                        if (currentCount == 0) return;
                     }
                 }
-
-                _currentCount = currentCount;
+                finally
+                {
+                    _currentCount = currentCount;
+                    foreach (var priority in _pendingPriorityRemovals)
+                    {
+                        _activePriorities.Remove(priority);
+                    }
+                    _pendingPriorityRemovals.Clear();
+                }
             }
         }
 
@@ -496,17 +538,25 @@ namespace AsyncSharp
 
             lock (_lock)
             {
-                foreach (var queuedAcquireRequest in _queuedAcquireRequests)
+                foreach (var queuedAcquireRequests in _queuedAcquireRequests.Values)
+                foreach (var queuedAcquireRequest in queuedAcquireRequests)
                 {
                     queuedAcquireRequest.GrantAcquire();
                 }
                 _queuedAcquireRequests.Clear();
+                _activePriorities.Clear();
                 _currentCount = newCount;
             }
         }
 
-        private void AddToRequests(IQueuedAcquire queuedAcquire)
+        private void AddToRequests(IQueuedAcquire queuedAcquire, int priority)
         {
+            if (!_queuedAcquireRequests.TryGetValue(priority, out var queuedAcquireRequests))
+            {
+                _queuedAcquireRequests[priority] = queuedAcquireRequests = new List<IQueuedAcquire>();
+                _activePriorities.Add(priority);
+            }
+
             int index;
             switch (_priority)
             {
@@ -514,21 +564,22 @@ namespace AsyncSharp
                     if (queuedAcquire.Count == 1)
                     {
                         // 1 is the lowest valid count (a count of 0 skips the waiter and immediately grants acquire)
-                        _queuedAcquireRequests.Add(queuedAcquire);
+                        queuedAcquireRequests.Add(queuedAcquire);
                     }
                     else
                     {
-                        index = _queuedAcquireRequests.BinarySearch(queuedAcquire, _queuedAcquireLowToHighComparer);
-                        _queuedAcquireRequests.Insert(index >= 0 ? index : ~index, queuedAcquire);
+                        index = queuedAcquireRequests.BinarySearch(queuedAcquire, _queuedAcquireLowToHighComparer);
+                        queuedAcquireRequests.Insert(index >= 0 ? index : ~index, queuedAcquire);
                     }
                     break;
                 case WaiterPriority.HighToLow:
-                    index = _queuedAcquireRequests.BinarySearch(queuedAcquire, _queuedAcquireHighToLowComparer);
-                    _queuedAcquireRequests.Insert(index >= 0 ? index : ~index, queuedAcquire);
+                    index = queuedAcquireRequests.BinarySearch(queuedAcquire, _queuedAcquireHighToLowComparer);
+                    queuedAcquireRequests.Insert(index >= 0 ? index : ~index, queuedAcquire);
                     break;
                 case WaiterPriority.FirstInFirstOut:
                 case WaiterPriority.FirstInFirstOutUnfair:
-                    _queuedAcquireRequests.Add(queuedAcquire);
+                case WaiterPriority.Unfair:
+                    queuedAcquireRequests.Add(queuedAcquire);
                     break;
                 default:
                     throw new NotImplementedException($"Priority value {_priority} not recognized.");
@@ -550,6 +601,16 @@ namespace AsyncSharp
             public int Compare(IQueuedAcquire x, IQueuedAcquire y)
             {
                 return y.Count.CompareTo(x.Count);
+            }
+        }
+
+        private static readonly DescendingComparer _priorityHighToLowComparer = new DescendingComparer();
+        private class DescendingComparer : IComparer<int>
+        {
+            public int Compare(int x, int y)
+            {
+                // Invert the comparison to sort in descending order
+                return y.CompareTo(x);
             }
         }
     }

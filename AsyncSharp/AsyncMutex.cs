@@ -33,8 +33,8 @@ namespace AsyncSharp
     /// </summary>
     public class AsyncMutex
     {
-        // We don't care about fairness since all acquire requests are a count of 1, so fairness is respected regardless.
-        private readonly AsyncSemaphore _asyncSemaphore = new AsyncSemaphore(1, 1);
+        // We want some fairness, otherwise newer waiter requests will have a higher chance of being acquired, allowing for starvation.
+        private readonly AsyncSemaphore _asyncSemaphore = new AsyncSemaphore(1, 1, AsyncSemaphore.WaiterPriority.FirstInFirstOut);
 
         public AsyncMutex() { }
 

@@ -54,7 +54,12 @@ namespace AsyncSharp
             /// Lock acquisition is done in the order the requests were made, regardless of whether a reader or writer,
             /// but a writer request will be skipped for any pending readers if any other reader is still holding a lock.
             /// </summary>
-            FirstInFirstOutUnfair
+            FirstInFirstOutUnfair,
+
+            /// <summary>
+            /// Lock acquisition does not respect ordering, and priority may not be respected.
+            /// </summary>
+            Unfair
         }
 
         public sealed class UpgradeableReaderAsyncLock : IDisposable
@@ -128,6 +133,9 @@ namespace AsyncSharp
                     break;
                 case LockPriority.FirstInFirstOutUnfair:
                     waiterPriority = AsyncSemaphore.WaiterPriority.FirstInFirstOutUnfair;
+                    break;
+                case LockPriority.Unfair:
+                    waiterPriority = AsyncSemaphore.WaiterPriority.Unfair;
                     break;
                 default:
                     throw new ArgumentException($"{nameof(LockPriority)} value '{lockPriority}' not recognized.");
