@@ -224,13 +224,13 @@ namespace AsyncSharp.Test
                 Task<bool> prioritySemaphoreWaiter;
                 if (currentOrder)
                 {
-                    normalSemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, false, CancellationToken.None);
-                    prioritySemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, true, CancellationToken.None);
+                    normalSemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, AsyncSemaphore.DefaultPriority, CancellationToken.None);
+                    prioritySemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, AsyncSemaphore.DefaultPriority+1, CancellationToken.None);
                 }
                 else
                 {
-                    prioritySemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, true, CancellationToken.None);
-                    normalSemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, false, CancellationToken.None);
+                    prioritySemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, AsyncSemaphore.DefaultPriority+1, CancellationToken.None);
+                    normalSemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, AsyncSemaphore.DefaultPriority, CancellationToken.None);
                 }
                 currentOrder = !currentOrder;
                 semaphore.Release(1);
@@ -344,7 +344,7 @@ namespace AsyncSharp.Test
             }
             lock (lockObject)
             {
-                Assert.Equal(100, semaphore._queuedAcquireRequests.Count);
+                Assert.Equal(100, semaphore._queuedAcquireRequests.Values.Sum(q => q.Count));
                 Assert.Equal(0, semaphore.CurrentCount);
                 Assert.Equal(200, beforeCount);
                 Assert.Equal(100, afterCount);
@@ -359,95 +359,5 @@ namespace AsyncSharp.Test
             Assert.Equal(0, semaphore.CurrentCount);
             Assert.Empty(semaphore._queuedAcquireRequests);
         }
-
-        #region Explicit
-        [Fact(Skip = "This is a time sensitive test that may not work correctly under non-ideal conditions due to how the threaded tasks execute.")]
-        public async Task MultipleSynchronousAcquire_Fair()
-        {
-            var semaphore = new AsyncSemaphore(0, 1, true);
-            var completionTasks = Enumerable.Range(0, 10).Select(_ =>
-            {
-                return new TaskCompletionSource<bool>();
-            }).ToList();
-            
-            var acquireTasks = new List<Task>();
-            for (var  i = 0; i < 10; ++i)
-            {
-                var index = i;
-                var acquireTask = Task.Run(() =>
-                {
-                    semaphore.Wait();
-                    completionTasks[index].SetResult(true);
-                });
-                await Task.Delay(100);
-                while (acquireTask.Status != TaskStatus.Running)
-                {
-                    await Task.Delay(100);
-                }
-            }
-
-            Assert.True(completionTasks.All(t => t.Task.Status != TaskStatus.RanToCompletion));
-
-            for(var i = 0; i < 10; ++i)
-            {
-                for (var finished = 0; finished < i; ++finished)
-                {
-                    Assert.True(completionTasks[finished].Task.IsCompletedSuccessfully);
-                }
-                for (var running = i; running < 10; ++running)
-                {
-                    Assert.NotEqual(TaskStatus.RanToCompletion, completionTasks[running].Task.Status);
-                }
-                semaphore.Release();
-                await Task.Delay(100);
-            }
-
-            Assert.True(completionTasks.All(t => t.Task.IsCompletedSuccessfully));
-        }
-
-        [Fact(Skip = "This is a time sensitive test that may not work correctly under non-ideal conditions due to how the threaded tasks execute.")]
-        public async Task MultipleAsynchronousAcquire_Fair()
-        {
-            var semaphore = new AsyncSemaphore(0, 1, true);
-            var completionTasks = Enumerable.Range(0, 10).Select(_ =>
-            {
-                return new TaskCompletionSource<bool>();
-            }).ToList();
-
-            var acquireTasks = new List<Task>();
-            for (var i = 0; i < 10; ++i)
-            {
-                var index = i;
-                var acquireTask = Task.Run(async () =>
-                {
-                    await semaphore.WaitAsync();
-                    completionTasks[index].SetResult(true);
-                });
-                await Task.Delay(100);
-                while (acquireTask.Status != TaskStatus.Running)
-                {
-                    await Task.Delay(100);
-                }
-            }
-
-            Assert.True(completionTasks.All(t => t.Task.Status != TaskStatus.RanToCompletion));
-
-            for (var i = 0; i < 10; ++i)
-            {
-                for (var finished = 0; finished < i; ++finished)
-                {
-                    Assert.True(completionTasks[finished].Task.IsCompletedSuccessfully);
-                }
-                for (var running = i; running < 10; ++running)
-                {
-                    Assert.NotEqual(TaskStatus.RanToCompletion, completionTasks[running].Task.Status);
-                }
-                semaphore.Release();
-                await Task.Delay(100);
-            }
-
-            Assert.True(completionTasks.All(t => t.Task.IsCompletedSuccessfully));
-        }
-        #endregion
     }
 }
