@@ -25,6 +25,7 @@ SOFTWARE.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -274,7 +275,7 @@ namespace AsyncSharp
         /// <param name="count"></param>
         /// <param name="timeout"></param>
         /// <param name="cancellationToken"></param>
-        /// <param name="forcePriority">If true, will prioritize this waiter over normal waiters.</param>
+        /// <param name="priority">The priority of this waiter as compared to other pending acquires. The higher the priority, the earlier it will be handled.</param>
         /// <returns>true if the Wait successfully acquired the count.</returns>
         public bool Wait(int count, int timeout, int priority, CancellationToken cancellationToken)
         {
@@ -286,6 +287,7 @@ namespace AsyncSharp
             {
                 throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be a non-negative number");
             }
+            // NOTE: No check for count == 0 is done because a user may not want to acquire any count, but still wants to wait on the waiter to be processed.
             if (timeout < -1) // Timeout.Infinite == -1
             {
                 throw new ArgumentOutOfRangeException($"Requested timeout '{timeout}' must be greater than or equal to -1.");
@@ -336,6 +338,32 @@ namespace AsyncSharp
                     }
                     queuedAcquire.Dispose();
                 }
+            }
+        }
+
+        /// <summary>
+        /// Acquires up to the provided count. This operation is done as soon as possible, and has the highest priority. Since 
+        /// it has no waiters, there is no timeout or cancellation token required.
+        /// </summary>
+        /// <param name="count"></param>
+        /// <returns>Returns the count it was able to acquire. This count still needs to be released as some point in the future.</returns>
+        public int AcquireUpTo(int count)
+        {
+            if (count > _maxCount)
+            {
+                throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be less than maximum configured count of '{_maxCount}'.");
+            }
+            if (count < 0)
+            {
+                throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be a non-negative number");
+            }
+            if (count == 0) return 0;
+
+            lock (_lock)
+            {
+                var countAcquired = Math.Min(_currentCount, count);
+                _currentCount -= countAcquired;
+                return countAcquired;
             }
         }
 
@@ -414,6 +442,7 @@ namespace AsyncSharp
             {
                 throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be a non-negative number");
             }
+            // NOTE: No check for count == 0 is done because a user may not want to acquire any count, but still wants to wait on the waiter to be processed.
             if (timeout < -1) // Timeout.Infinite == -1
             {
                 throw new ArgumentOutOfRangeException($"Requested timeout '{timeout}' must be greater than or equal to -1.");
@@ -462,10 +491,31 @@ namespace AsyncSharp
         
         public void Release(int count)
         {
+            var amountReleased = ReleaseUpTo(count);
+            if (amountReleased != count)
+            {
+                throw new Exception($"A count of '{count}' was to be released, but only '{amountReleased}' was released.");
+            }
+        }
+
+        /// <summary>
+        /// Will attempt to release up to the count provided.
+        /// </summary>
+        /// <param name="count"></param>
+        /// <returns>The count released.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"></exception>
+        public int ReleaseUpTo(int count)
+        {
             lock (_lock)
             {
+                if (count < 0)
+                {
+                    throw new ArgumentOutOfRangeException($"Requested count '{count}' to release must be a non-negative number");
+                }
+
+                var originalCurrentCount = _currentCount;
                 var currentCount = _currentCount + count;
-                if (currentCount == 0) return; // A count of 0 immediately returns, since it can't release anything
+                if (currentCount == 0) return 0; // A count of 0 immediately returns, since it can't release anything
                 if (currentCount > _maxCount)
                 {
                     throw new ArgumentOutOfRangeException(
@@ -475,6 +525,7 @@ namespace AsyncSharp
 
                 try
                 {
+                    var amountReleased = 0;
                     foreach (var priority in _activePriorities)
                     {
                         var queuedAcquireRequests = _queuedAcquireRequests[priority];
@@ -487,6 +538,7 @@ namespace AsyncSharp
                                 // Count available to acquire
                                 queueItem.GrantAcquire();
                                 currentCount -= queueItem.Count;
+                                amountReleased += queueItem.Count;
                                 queuedAcquireRequests.RemoveAt(queuePosition);
 
                                 // Cleanup if priority's queue is emptied
@@ -506,7 +558,16 @@ namespace AsyncSharp
                                 break;
                             }
                         }
-                        if (currentCount == 0) return;
+                        if (currentCount == 0) break;
+                    }
+                    var differenceInCount = originalCurrentCount - currentCount;
+                    if (differenceInCount > 0)
+                    {
+                        return Math.Abs(differenceInCount - amountReleased);
+                    }
+                    else
+                    {
+                        return Math.Abs(differenceInCount) + amountReleased;
                     }
                 }
                 finally

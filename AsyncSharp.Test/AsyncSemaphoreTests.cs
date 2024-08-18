@@ -359,5 +359,22 @@ namespace AsyncSharp.Test
             Assert.Equal(0, semaphore.CurrentCount);
             Assert.Empty(semaphore._queuedAcquireRequests);
         }
+
+        [Fact]
+        public async Task AcquireUpTo()
+        {
+            var maxCount = 50;
+            for (var startingCount = 0; startingCount <= maxCount; ++startingCount)
+            {
+                var semaphore = new AsyncSemaphore(startingCount, maxCount);
+
+                var acquireAmount = semaphore.AcquireUpTo(maxCount);
+                Assert.Equal(0, semaphore.CurrentCount);
+                Assert.Equal(startingCount, acquireAmount);
+                var releaseAmount = semaphore.ReleaseUpTo(maxCount);
+                Assert.Equal(maxCount, semaphore.CurrentCount);
+                Assert.Equal(maxCount, releaseAmount);
+            }
+        }
     }
 }
