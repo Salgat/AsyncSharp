@@ -20,19 +20,20 @@
         <Version>1.3.2</Version>
     </PropertyGroup>
     <ItemGroup>
-    <None Include="..\LICENSE">
-        <Pack>True</Pack>
-        <PackagePath>\</PackagePath>
-    </None>
-    <None Include="..\README.md">
-        <Pack>True</Pack>
-        <PackagePath>\</PackagePath>
-    </None>
+        <None Include="..\LICENSE">
+            <Pack>True</Pack>
+            <PackagePath>\</PackagePath>
+        </None>
+        <None Include="..\README.md">
+            <Pack>True</Pack>
+            <PackagePath>\</PackagePath>
+        </None>
+        <None Include="..\icon.png">
+	        <Pack>True</Pack>
+	        <PackagePath>\</PackagePath>
+        </None>
     </ItemGroup>
     <PropertyGroup>
-	    <PackageIcon>icon.png</PackageIcon>
+        <PackageIcon>icon.png</PackageIcon>
     </PropertyGroup>
-    <ItemGroup>
-	    <None Include="icon.png" Pack="true" PackagePath="\" />
-    </ItemGroup>
 </Project>
