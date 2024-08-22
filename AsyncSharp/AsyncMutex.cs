@@ -31,7 +31,7 @@ namespace AsyncSharp
     /// <summary>
     /// Async friendly mutex. Unlike a normal CLR lock, this is not re-entrant.
     /// </summary>
-    public class AsyncMutex
+    public class AsyncMutex : IDisposable
     {
         // We want some fairness, otherwise newer waiter requests will have a higher chance of being acquired, allowing for starvation.
         private readonly AsyncSemaphore _asyncSemaphore = new AsyncSemaphore(1, 1, AsyncSemaphore.WaiterPriority.FirstInFirstOut);
@@ -133,5 +133,7 @@ namespace AsyncSharp
         /// <returns>Disposable object that releases lock on dispose.</returns>
         public Task<IDisposable> LockAndUnlockAsync(CancellationToken cancellationToken)
             => _asyncSemaphore.WaitAndReleaseAsync(cancellationToken);
+
+        public void Dispose() => _asyncSemaphore.Dispose();
     }
 }

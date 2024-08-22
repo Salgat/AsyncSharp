@@ -13,7 +13,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void AcquireReader_UpgradeToWriter_CancellationToken()
         {
-            var readersWriterAsyncLock = new ReadersWriterAsyncLock();
+            using var readersWriterAsyncLock = new ReadersWriterAsyncLock();
 
             using var upgradeableLock = readersWriterAsyncLock.AcquireUpgradeableReader();
             using var writerLock = upgradeableLock.UpgradeToWriter();
@@ -22,7 +22,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task AcquireReaderAsync_UpgradeToWriterAsync_CancellationToken()
         {
-            var readersWriterAsyncLock = new ReadersWriterAsyncLock();
+            using var readersWriterAsyncLock = new ReadersWriterAsyncLock();
 
             using var upgradeableLock = await readersWriterAsyncLock.AcquireUpgradeableReaderAsync();
             using var writerLock = await upgradeableLock.UpgradeToWriterAsync();
@@ -31,7 +31,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void AcquireReadersAndWriter_CancellationToken()
         {
-            var readersWriterAsyncLock = new ReadersWriterAsyncLock();
+            using var readersWriterAsyncLock = new ReadersWriterAsyncLock();
             
             using (readersWriterAsyncLock.AcquireReader())
             using (readersWriterAsyncLock.AcquireReader())
@@ -47,7 +47,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task AcquireReadersAndWriterAsync_CancellationToken()
         {
-            var readersWriterAsyncLock = new ReadersWriterAsyncLock();
+            using var readersWriterAsyncLock = new ReadersWriterAsyncLock();
 
             using (await readersWriterAsyncLock.AcquireReaderAsync())
             using (await readersWriterAsyncLock.AcquireReaderAsync())
@@ -72,7 +72,7 @@ namespace AsyncSharp.Test
             void IncrementAfterReaderLock() { lock (lockObject) { duringCount++; } }
             void IncrementAfterWriterLock() { lock (lockObject) { afterCount++; } }
 
-            var readersWriterAsyncLock = new ReadersWriterAsyncLock();
+            using var readersWriterAsyncLock = new ReadersWriterAsyncLock();
             var readerLock = new SemaphoreSlim(0, 2);
             var writerLock = new SemaphoreSlim(0, 2);
 
@@ -119,7 +119,7 @@ namespace AsyncSharp.Test
             var writesAcquiredCount = 0;
             var hasReader = new Dictionary<int, bool>();
 
-            var readerWriterUpgradeableLock = new ReadersWriterAsyncLock();
+            using var readerWriterUpgradeableLock = new ReadersWriterAsyncLock();
             var random = new Random();
             const int parallelThreads = 10;
             var parallelOptions = new ParallelOptions()

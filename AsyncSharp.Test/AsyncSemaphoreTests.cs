@@ -12,7 +12,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void Wait()
         {
-            var semaphore = new AsyncSemaphore(1, 1, true);
+            using var semaphore = new AsyncSemaphore(1, 1, true);
 
             semaphore.Wait();
             var acquiredLock = semaphore.Wait(1, 0);
@@ -23,7 +23,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task WaitAsync()
         {
-            var semaphore = new AsyncSemaphore(1, 1, true);
+            using var semaphore = new AsyncSemaphore(1, 1, true);
 
             await semaphore.WaitAsync();
             var acquiredLock = await semaphore.WaitAsync(1, 0);
@@ -34,7 +34,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void Wait_Release()
         {
-            var semaphore = new AsyncSemaphore(1, 1, true);
+            using var semaphore = new AsyncSemaphore(1, 1, true);
 
             for (var i = 0; i < 1000; ++i)
             {
@@ -46,7 +46,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task WaitAsync_Release()
         {
-            var semaphore = new AsyncSemaphore(1, 1, true);
+            using var semaphore = new AsyncSemaphore(1, 1, true);
 
             for (var i = 0; i < 1000; ++i)
             {
@@ -58,7 +58,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void Wait_Random()
         {
-            var semaphore = new AsyncSemaphore(1000, 1000, true);
+            using var semaphore = new AsyncSemaphore(1000, 1000, true);
 
             var random = new Random(1234);
             var amountLeft = 1000;
@@ -76,7 +76,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task WaitAsync_Random()
         {
-            var semaphore = new AsyncSemaphore(1000, 1000, true);
+            using var semaphore = new AsyncSemaphore(1000, 1000, true);
 
             var random = new Random(1234);
             var amountLeft = 1000;
@@ -94,7 +94,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void ReleaseAll()
         {
-            var semaphore = new AsyncSemaphore(0, 10, true);
+            using var semaphore = new AsyncSemaphore(0, 10, true);
 
             var acquiredWhenNoneAvailable = semaphore.Wait(10, 0);
             semaphore.ReleaseAll();
@@ -107,7 +107,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void Release()
         {
-            var semaphore = new AsyncSemaphore(0, 5, true);
+            using var semaphore = new AsyncSemaphore(0, 5, true);
 
             var acquiredWhenNoneAvailable = semaphore.Wait(5, 0);
             semaphore.Release(5);
@@ -120,7 +120,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void CurrentCount_MaxCount()
         {
-            var semaphore = new AsyncSemaphore(14, 18, true);
+            using var semaphore = new AsyncSemaphore(14, 18, true);
             Assert.Equal(18, semaphore.MaxCount);
             Assert.Equal(14, semaphore.CurrentCount);
 
@@ -138,7 +138,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void WaitAndRelease()
         {
-            var semaphore = new AsyncSemaphore(5, 10);
+            using var semaphore = new AsyncSemaphore(5, 10);
 
             var acquire = semaphore.WaitAndRelease();
             Assert.Equal(4, semaphore.CurrentCount);
@@ -154,7 +154,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task WaitAndReleaseAsync()
         {
-            var semaphore = new AsyncSemaphore(5, 10);
+            using var semaphore = new AsyncSemaphore(5, 10);
 
             var acquire = await semaphore.WaitAndReleaseAsync();
             Assert.Equal(4, semaphore.CurrentCount);
@@ -170,7 +170,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void WaitAndReleaseAll()
         {
-            var semaphore = new AsyncSemaphore(10, 10);
+            using var semaphore = new AsyncSemaphore(10, 10);
 
             var acquire = semaphore.WaitAndReleaseAll();
             Assert.Equal(0, semaphore.CurrentCount);
@@ -181,7 +181,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task WaitAndReleaseAllAsync()
         {
-            var semaphore = new AsyncSemaphore(10, 10);
+            using var semaphore = new AsyncSemaphore(10, 10);
 
             var acquire = await semaphore.WaitAndReleaseAllAsync();
             Assert.Equal(0, semaphore.CurrentCount);
@@ -193,7 +193,7 @@ namespace AsyncSharp.Test
         public void Wait_Timeout()
         {
             var startTime = Environment.TickCount;
-            var semaphore = new AsyncSemaphore(0, 1);
+            using var semaphore = new AsyncSemaphore(0, 1);
             var acquiredSemaphore = semaphore.Wait(1, 250);
             var timeWaited = Environment.TickCount - startTime;
 
@@ -205,7 +205,7 @@ namespace AsyncSharp.Test
         public async Task WaitAsync_Timeout()
         {
             var startTime = Environment.TickCount;
-            var semaphore = new AsyncSemaphore(0, 1);
+            using var semaphore = new AsyncSemaphore(0, 1);
             var acquiredSemaphore = await semaphore.WaitAsync(1, 100);
             var timeWaited = Environment.TickCount - startTime;
 
@@ -219,7 +219,7 @@ namespace AsyncSharp.Test
             var currentOrder = false; // We alternate the order of the two waiter acquires
             (Task<bool> Normal, Task<bool> Priority) GenerateWaiterTasks()
             {
-                var semaphore = new AsyncSemaphore(0, 1);
+                using var semaphore = new AsyncSemaphore(0, 1);
                 Task<bool> normalSemaphoreWaiter;
                 Task<bool> prioritySemaphoreWaiter;
                 if (currentOrder)
@@ -252,7 +252,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void Wait_CancellationToken()
         {
-            var semaphore = new AsyncSemaphore(0, 1);
+            using var semaphore = new AsyncSemaphore(0, 1);
             var start = Environment.TickCount;
             using var cancellationToken = new CancellationTokenSource(100);
             Assert.Throws<OperationCanceledException>(() 
@@ -263,7 +263,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task WaitAsync_CancellationToken()
         {
-            var semaphore = new AsyncSemaphore(0, 1);
+            using var semaphore = new AsyncSemaphore(0, 1);
             var start = Environment.TickCount;
             using var cancellationTokenSource = new CancellationTokenSource(100);
             await Assert.ThrowsAsync<OperationCanceledException>(() => semaphore.WaitAsync(cancellationTokenSource.Token));
@@ -273,7 +273,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void WaitAndRelease_Dispose()
         {
-            var semaphore = new AsyncSemaphore(1, 1);
+            using var semaphore = new AsyncSemaphore(1, 1);
 
             Assert.Equal(1, semaphore.CurrentCount);
             using (semaphore.WaitAndRelease())
@@ -286,7 +286,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task WaitAndReleaseAsync_Dispose()
         {
-            var semaphore = new AsyncSemaphore(1, 1);
+            using var semaphore = new AsyncSemaphore(1, 1);
 
             Assert.Equal(1, semaphore.CurrentCount);
             using (await semaphore.WaitAndReleaseAsync())
@@ -299,7 +299,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void Wait_CancellationToken_Success()
         {
-            var semaphore = new AsyncSemaphore(0, 1);
+            using var semaphore = new AsyncSemaphore(0, 1);
             using var cancellationToken = new CancellationTokenSource(100);
             Assert.Throws<OperationCanceledException>(() => semaphore.Wait(cancellationToken.Token));
         }
@@ -307,7 +307,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task WaitAsync_CancellationToken_Success()
         {
-            var semaphore = new AsyncSemaphore(0, 1);
+            using var semaphore = new AsyncSemaphore(0, 1);
             using var cancellationTokenSource = new CancellationTokenSource(100);
             await Assert.ThrowsAsync<OperationCanceledException>(() => semaphore.WaitAsync(cancellationTokenSource.Token));
         }
@@ -321,7 +321,7 @@ namespace AsyncSharp.Test
             void IncrementBefore() { lock (lockObject) { beforeCount++; } }
             void IncrementAfter() { lock (lockObject) { afterCount++; } }
 
-            var semaphore = new AsyncSemaphore(100, 100);
+            using var semaphore = new AsyncSemaphore(100, 100);
             var parallelOptions = new ParallelOptions()
             {
                 MaxDegreeOfParallelism = 200
@@ -366,7 +366,7 @@ namespace AsyncSharp.Test
             var maxCount = 50;
             for (var startingCount = 0; startingCount <= maxCount; ++startingCount)
             {
-                var semaphore = new AsyncSemaphore(startingCount, maxCount);
+                using var semaphore = new AsyncSemaphore(startingCount, maxCount);
 
                 var acquireAmount = semaphore.AcquireUpTo(maxCount);
                 Assert.Equal(0, semaphore.CurrentCount);

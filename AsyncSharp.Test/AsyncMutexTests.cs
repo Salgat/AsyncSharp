@@ -12,7 +12,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void Lock()
         {
-            var mutex = new AsyncMutex();
+            using var mutex = new AsyncMutex();
             mutex.Lock();
             mutex.Unlock();
         }
@@ -20,7 +20,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task LockAsync()
         {
-            var mutex = new AsyncMutex();
+            using var mutex = new AsyncMutex();
             await mutex.LockAsync();
             mutex.Unlock();
         }
@@ -28,7 +28,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void Lock_Timeout()
         {
-            var mutex = new AsyncMutex();
+            using var mutex = new AsyncMutex();
             mutex.Lock();
 
             var start = Environment.TickCount;
@@ -41,7 +41,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task LockAsync_Timeout()
         {
-            var mutex = new AsyncMutex();
+            using var mutex = new AsyncMutex();
             mutex.Lock();
 
             var start = Environment.TickCount;
@@ -54,7 +54,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void Lock_CancellationToken()
         {
-            var mutex = new AsyncMutex();
+            using var mutex = new AsyncMutex();
             mutex.Lock();
 
             var start = Environment.TickCount;
@@ -69,7 +69,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task LockAsync_CancellationToken()
         {
-            var mutex = new AsyncMutex();
+            using var mutex = new AsyncMutex();
             mutex.Lock();
 
             var start = Environment.TickCount;
@@ -84,7 +84,7 @@ namespace AsyncSharp.Test
         [Fact]
         public void LockAndUnlock()
         {
-            var mutex = new AsyncMutex();
+            using var mutex = new AsyncMutex();
             using (mutex.LockAndUnlock())
             {
                 Assert.False(mutex.Lock(0));
@@ -94,7 +94,7 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task LockAndUnlockAsync()
         {
-            var mutex = new AsyncMutex();
+            using var mutex = new AsyncMutex();
             using (await mutex.LockAndUnlockAsync())
             {
                 Assert.False(await mutex.LockAsync(0));

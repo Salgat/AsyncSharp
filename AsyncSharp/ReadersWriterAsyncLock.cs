@@ -31,7 +31,7 @@ namespace AsyncSharp
     /// <summary>
     /// Provides a readers–writer lock with both synchronous and asynchronous lock acquire methods.
     /// </summary>
-    public class ReadersWriterAsyncLock
+    public class ReadersWriterAsyncLock : IDisposable
     {
         public enum LockPriority
         {
@@ -219,5 +219,7 @@ namespace AsyncSharp
             => _asyncSemaphore.WaitAndReleaseAllAsync(cancellationToken);
 
         #endregion
+
+        public void Dispose() => _asyncSemaphore.Dispose();
     }
 }

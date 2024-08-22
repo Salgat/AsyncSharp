@@ -10,7 +10,7 @@ AsyncSemaphore provides similar functionality to SemaphoreSlim, along with the a
 
  * Async locking example:
 ```csharp
-var semaphore = new AsyncSemaphore(1, 1);
+using var semaphore = new AsyncSemaphore(1, 1);
 await semaphore.WaitAsync();
 try 
 {
@@ -24,7 +24,7 @@ finally
 
  * Synchronous locking example:
 ```csharp
-var semaphore = new AsyncSemaphore(1, 1);
+using var semaphore = new AsyncSemaphore(1, 1);
 semaphore.Wait();
 try 
 {
@@ -38,7 +38,7 @@ finally
 
  * Disposable locking example:
 ```csharp
-var semaphore = new AsyncSemaphore(1, 1);
+using var semaphore = new AsyncSemaphore(1, 1);
 using (await semaphore.WaitAndReleaseAsync())
 {
     // Your operation
@@ -47,7 +47,7 @@ using (await semaphore.WaitAndReleaseAsync())
 
  * Acquire example:
 ```csharp
-var semaphore = new AsyncSemaphore(5, 5);
+using var semaphore = new AsyncSemaphore(5, 5);
 await semaphore.WaitAsync(2);
 try 
 {
@@ -61,7 +61,7 @@ finally
 
  * Acquire with fairness example:
 ```csharp
-var semaphore = new AsyncSemaphore(5, 5, true);
+using var semaphore = new AsyncSemaphore(5, 5, true);
 await semaphore.WaitAsync(2);
 try 
 {
@@ -75,7 +75,7 @@ finally
 
  * Throttling example:
 ```csharp
-var semaphore = new AsyncSemaphore(10, 10);
+using var semaphore = new AsyncSemaphore(10, 10);
 using var cancellationTokenSource = new CancellationTokenSource();
 _ = Task.Run(async () => 
 {
@@ -100,7 +100,7 @@ AsyncMutex provides similar functionality to AsyncSemaphore, but only allows for
 
  * Async locking example:
 ```csharp
-var mutex = new AsyncMutex();
+using var mutex = new AsyncMutex();
 await semaphore.LockAsync();
 try 
 {
@@ -114,7 +114,7 @@ finally
 
  * Synchronous locking example:
 ```csharp
-var mutex = new AsyncMutex();
+using var mutex = new AsyncMutex();
 semaphore.Lock();
 try 
 {
@@ -128,7 +128,7 @@ finally
 
  * Disposable locking example:
 ```csharp
-var mutex = new AsyncMutex();
+using var mutex = new AsyncMutex();
 using (await mutex.LockAndUnlockAsync())
 {
     // Your operation
@@ -141,7 +141,7 @@ Provides a readers-writer lock that is both async friendly, allows for optional 
 
 * Acquire a reader lock:
 ```csharp
-var readersWriterAsyncLock = new ReadersWriterAsyncLock();
+using var readersWriterAsyncLock = new ReadersWriterAsyncLock();
 using (var readerLock = await readersWriterAsyncLock.AcquireReader())
 {
     // Do operations while holding reader lock
@@ -150,7 +150,7 @@ using (var readerLock = await readersWriterAsyncLock.AcquireReader())
 
 * Acquire a writer lock:
 ```csharp
-var readersWriterAsyncLock = new ReadersWriterAsyncLock();
+using var readersWriterAsyncLock = new ReadersWriterAsyncLock();
 using (var writerLock = await readersWriterAsyncLock.AcquireWriter())
 {
     // Do operations while holding exclusive writer lock
@@ -159,7 +159,7 @@ using (var writerLock = await readersWriterAsyncLock.AcquireWriter())
 
  * Acquiring a reader lock and upgrading to a writer lock example:
 ```csharp
-var readersWriterAsyncLock = new ReadersWriterAsyncLock();
+using var readersWriterAsyncLock = new ReadersWriterAsyncLock();
 using (var upgradeableLock = await readersWriterAsyncLock.AcquireUpgradeableReaderAsync())
 {
     // Do operations while holding reader lock

@@ -37,7 +37,7 @@ namespace AsyncSharp
     /// waiting on multiple count, atomically release all waiters, disposable wait and release, and fairness of the order
     /// that waiters are released based on the order of their wait.
     /// </summary>
-    public class AsyncSemaphore
+    public class AsyncSemaphore : IDisposable
     {
         public enum WaiterPriority 
         { 
@@ -75,7 +75,7 @@ namespace AsyncSharp
         private int _currentCount; // Count available to acquire (Waits asking for more than available are blocked)
         private readonly int _maxCount; // Max count that can be acquired
         private readonly WaiterPriority _priority;
-        private readonly object _lock = new object(); // Grants exclusive access to _currentCount and _queuedAcquireRequests
+        private object _lock = new object(); // Grants exclusive access to _currentCount and _queuedAcquireRequests
 
         // Keeps track of all acquire waiters. Wait/WaitAsync can only add entries, and Release/ReleaseAll and failed Wait/WaitAsync can only remove entries.
         internal readonly Dictionary<int, List<IQueuedAcquire>> _queuedAcquireRequests = new Dictionary<int, List<IQueuedAcquire>>();
@@ -279,6 +279,7 @@ namespace AsyncSharp
         /// <returns>true if the Wait successfully acquired the count.</returns>
         public bool Wait(int count, int timeout, int priority, CancellationToken cancellationToken)
         {
+            CheckIfDisposed();
             if (count > _maxCount)
             {
                 throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be less than maximum configured count of '{_maxCount}'.");
@@ -349,6 +350,7 @@ namespace AsyncSharp
         /// <returns>Returns the count it was able to acquire. This count still needs to be released as some point in the future.</returns>
         public int AcquireUpTo(int count)
         {
+            CheckIfDisposed();
             if (count > _maxCount)
             {
                 throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be less than maximum configured count of '{_maxCount}'.");
@@ -434,6 +436,7 @@ namespace AsyncSharp
         /// <returns></returns>
         public async Task<bool> WaitAsync(int count, int timeout, int priority, CancellationToken cancellationToken)
         {
+            CheckIfDisposed();
             if (count > _maxCount)
             {
                 throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be less than maximum configured count of '{_maxCount}'.");
@@ -506,6 +509,7 @@ namespace AsyncSharp
         /// <exception cref="ArgumentOutOfRangeException"></exception>
         public int ReleaseUpTo(int count)
         {
+            CheckIfDisposed();
             lock (_lock)
             {
                 if (count < 0)
@@ -591,6 +595,7 @@ namespace AsyncSharp
         /// <param name="newCount">The value to reset CurrentCount to.</param>
         public void ReleaseAll(int newCount)
         {
+            CheckIfDisposed();
             if (newCount < 0 || newCount > _maxCount)
             {
                 throw new ArgumentOutOfRangeException($"The '{nameof(newCount)}' provided to '{nameof(ReleaseAll)}' " +
@@ -607,6 +612,33 @@ namespace AsyncSharp
                 _queuedAcquireRequests.Clear();
                 _activePriorities.Clear();
                 _currentCount = newCount;
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_lock == null) return; // Already disposed
+            lock (_lock)
+            {
+                foreach (var list in _queuedAcquireRequests.Values)
+                {
+                    foreach (var entry in list)
+                    {
+                        if (entry is QueuedSynchronousAcquire queuedSynchronousAcquire)
+                        {
+                            queuedSynchronousAcquire.Dispose();
+                        }
+                    }
+                }
+                _lock = null;
+            }
+        }
+
+        private void CheckIfDisposed()
+        {
+            if (_lock == null)
+            {
+                throw new ObjectDisposedException(nameof(AsyncSemaphore));
             }
         }
 
