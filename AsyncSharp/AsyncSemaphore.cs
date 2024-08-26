@@ -494,20 +494,24 @@ namespace AsyncSharp
         
         public void Release(int count)
         {
-            var amountReleased = ReleaseUpTo(count);
+            var amountReleased = ReleaseUpTo(count, true);
             if (amountReleased != count)
             {
                 throw new Exception($"A count of '{count}' was to be released, but only '{amountReleased}' was released.");
             }
         }
 
+
+        public int ReleaseUpTo(int count) => ReleaseUpTo(count, false);
+
         /// <summary>
         /// Will attempt to release up to the count provided.
         /// </summary>
         /// <param name="count"></param>
+        /// <param name="assertCount">If true, will ensure that the caller is intended to keep track of the exact amount acquired and released.</param>
         /// <returns>The count released.</returns>
         /// <exception cref="ArgumentOutOfRangeException"></exception>
-        public int ReleaseUpTo(int count)
+        private int ReleaseUpTo(int count, bool assertCount)
         {
             CheckIfDisposed();
             lock (_lock)
@@ -522,9 +526,16 @@ namespace AsyncSharp
                 if (currentCount == 0) return 0; // A count of 0 immediately returns, since it can't release anything
                 if (currentCount > _maxCount)
                 {
-                    throw new ArgumentOutOfRangeException(
-                        $"Release of '{count}' would result in a {nameof(CurrentCount)} of '{currentCount}', " +
-                        $"which exceeds the maximum count of '{_maxCount}'.");
+                    if (assertCount)
+                    {
+                        throw new ArgumentOutOfRangeException(
+                            $"Release of '{count}' would result in a {nameof(CurrentCount)} of '{currentCount}', " +
+                            $"which exceeds the maximum count of '{_maxCount}'.");
+                    }
+                    else
+                    {
+                        currentCount = _maxCount;
+                    }
                 }
 
                 try
