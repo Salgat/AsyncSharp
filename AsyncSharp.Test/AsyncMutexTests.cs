@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -32,7 +30,7 @@ namespace AsyncSharp.Test
             mutex.Lock();
 
             var start = Environment.TickCount;
-            var capturedLock = mutex.Lock(100);
+            var capturedLock = mutex.Lock(TimeSpan.FromMilliseconds(100));
 
             Assert.False(capturedLock);
             Assert.True(Environment.TickCount - start >= 90);
@@ -45,7 +43,7 @@ namespace AsyncSharp.Test
             mutex.Lock();
 
             var start = Environment.TickCount;
-            var capturedLock = await mutex.LockAsync(100);
+            var capturedLock = await mutex.LockAsync(TimeSpan.FromMilliseconds(100));
 
             Assert.False(capturedLock);
             Assert.True(Environment.TickCount - start >= 90);
@@ -87,7 +85,7 @@ namespace AsyncSharp.Test
             using var mutex = new AsyncMutex();
             using (mutex.LockAndUnlock())
             {
-                Assert.False(mutex.Lock(0));
+                Assert.False(mutex.Lock(TimeSpan.FromMilliseconds(0)));
             }
         }
 
@@ -97,7 +95,7 @@ namespace AsyncSharp.Test
             using var mutex = new AsyncMutex();
             using (await mutex.LockAndUnlockAsync())
             {
-                Assert.False(await mutex.LockAsync(0));
+                Assert.False(await mutex.LockAsync(TimeSpan.FromMilliseconds(0)));
             }
         }
     }

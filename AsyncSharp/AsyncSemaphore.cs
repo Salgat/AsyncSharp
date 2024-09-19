@@ -25,8 +25,6 @@ SOFTWARE.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -70,6 +68,7 @@ namespace AsyncSharp
             Unfair
         }
 
+        public static TimeSpan InfiniteTimeSpan => Timeout.InfiniteTimeSpan;
         public static int DefaultPriority => 0;
 
         private int _currentCount; // Count available to acquire (Waits asking for more than available are blocked)
@@ -98,14 +97,14 @@ namespace AsyncSharp
                 Count = count;
             }
 
-            public bool Wait(int timeout, CancellationToken cancellationToken)
+            public bool Wait(TimeSpan timeout, CancellationToken cancellationToken)
             {
-                if (timeout == Timeout.Infinite)
+                if (timeout == Timeout.InfiniteTimeSpan)
                 {
                     _waitHandle.Wait(cancellationToken);
                     return true;
                 }
-                else if (timeout > 0)
+                else if (timeout > TimeSpan.Zero)
                 {
                     return _waitHandle.Wait(timeout, cancellationToken);
                 }
@@ -260,13 +259,13 @@ namespace AsyncSharp
         public void Wait(int count)
             => Wait(count, CancellationToken.None);
 
-        public bool Wait(int count, int timeout)
+        public bool Wait(int count, TimeSpan timeout)
             => Wait(count, timeout, CancellationToken.None);
 
         public void Wait(int count, CancellationToken cancellationToken)
-            => Wait(count, Timeout.Infinite, cancellationToken);
+            => Wait(count, TimeSpan.FromMilliseconds(-1), cancellationToken);
 
-        public bool Wait(int count, int timeout, CancellationToken cancellationToken)
+        public bool Wait(int count, TimeSpan timeout, CancellationToken cancellationToken)
             => Wait(count, timeout, DefaultPriority, cancellationToken);
 
         /// <summary>
@@ -277,7 +276,7 @@ namespace AsyncSharp
         /// <param name="cancellationToken"></param>
         /// <param name="priority">The priority of this waiter as compared to other pending acquires. The higher the priority, the earlier it will be handled.</param>
         /// <returns>true if the Wait successfully acquired the count.</returns>
-        public bool Wait(int count, int timeout, int priority, CancellationToken cancellationToken)
+        public bool Wait(int count, TimeSpan timeout, int priority, CancellationToken cancellationToken)
         {
             CheckIfDisposed();
             if (count > _maxCount)
@@ -289,13 +288,12 @@ namespace AsyncSharp
                 throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be a non-negative number");
             }
             // NOTE: No check for count == 0 is done because a user may not want to acquire any count, but still wants to wait on the waiter to be processed.
-            if (timeout < -1) // Timeout.Infinite == -1
+            if (timeout != Timeout.InfiniteTimeSpan && timeout < TimeSpan.Zero)
             {
-                throw new ArgumentOutOfRangeException($"Requested timeout '{timeout}' must be greater than or equal to -1.");
+                throw new ArgumentOutOfRangeException($"Requested timeout '{timeout}' must be greater than 0 or equal to Timeout.InfiniteTimeSpan.");
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            var startTime = (uint)Environment.TickCount;
             var acquiredSuccess = false;
             QueuedSynchronousAcquire queuedAcquire = null;
             try
@@ -315,14 +313,13 @@ namespace AsyncSharp
                     Release(0); // Flush any pending waiters
                 }
 
-                if (timeout == Timeout.Infinite)
+                if (timeout == Timeout.InfiniteTimeSpan)
                 {
-                    acquiredSuccess = queuedAcquire.Wait(Timeout.Infinite, cancellationToken);
+                    acquiredSuccess = queuedAcquire.Wait(Timeout.InfiniteTimeSpan, cancellationToken);
                 }
                 else
                 {
-                    var timeToWait = Math.Max(0, timeout - (int)((uint)Environment.TickCount - startTime));
-                    acquiredSuccess = queuedAcquire.Wait(timeToWait, cancellationToken);
+                    acquiredSuccess = queuedAcquire.Wait(timeout, cancellationToken);
                 }
                 return acquiredSuccess;
             }
@@ -414,16 +411,16 @@ namespace AsyncSharp
         public Task WaitAsync(int count)
             => WaitAsync(count, CancellationToken.None);
 
-        public Task<bool> WaitAsync(int count, int timeout)
+        public Task<bool> WaitAsync(int count, TimeSpan timeout)
             => WaitAsync(count, timeout, CancellationToken.None);
 
         public Task WaitAsync(CancellationToken cancellationToken)
             => WaitAsync(1, cancellationToken);
 
         public Task WaitAsync(int count, CancellationToken cancellationToken)
-            => WaitAsync(count, Timeout.Infinite, cancellationToken);
+            => WaitAsync(count, Timeout.InfiniteTimeSpan, cancellationToken);
 
-        public Task<bool> WaitAsync(int count, int timeout, CancellationToken cancellationToken)
+        public Task<bool> WaitAsync(int count, TimeSpan timeout, CancellationToken cancellationToken)
             => WaitAsync(count, timeout, DefaultPriority, cancellationToken);
 
         /// <summary>
@@ -434,7 +431,7 @@ namespace AsyncSharp
         /// <param name="cancellationToken"></param>
         /// <param name="forcePriority">If true, will prioritize this waiter over normal waiters.</param>
         /// <returns></returns>
-        public async Task<bool> WaitAsync(int count, int timeout, int priority, CancellationToken cancellationToken)
+        public async Task<bool> WaitAsync(int count, TimeSpan timeout, int priority, CancellationToken cancellationToken)
         {
             CheckIfDisposed();
             if (count > _maxCount)
@@ -446,9 +443,9 @@ namespace AsyncSharp
                 throw new ArgumentOutOfRangeException($"Requested count '{count}' to acquire must be a non-negative number");
             }
             // NOTE: No check for count == 0 is done because a user may not want to acquire any count, but still wants to wait on the waiter to be processed.
-            if (timeout < -1) // Timeout.Infinite == -1
+            if (timeout != Timeout.InfiniteTimeSpan && timeout < TimeSpan.Zero)
             {
-                throw new ArgumentOutOfRangeException($"Requested timeout '{timeout}' must be greater than or equal to -1.");
+                throw new ArgumentOutOfRangeException($"Requested timeout '{timeout}' must be greater than 0 or equal to Timeout.InfiniteTimeSpan.");
             }
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -485,7 +482,7 @@ namespace AsyncSharp
                 RemoveFailedWaiter(queuedAcquire, priority);
             }
             cancellationToken.ThrowIfCancellationRequested();
-            if (timeout == Timeout.Infinite) throw new TimeoutException("Timeout argument was infinite but failed to wait on semaphore.");
+            if (timeout == Timeout.InfiniteTimeSpan) throw new TimeoutException("Timeout argument was infinite but failed to wait on semaphore.");
             return false;
         }
 
