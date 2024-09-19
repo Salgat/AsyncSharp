@@ -101,28 +101,28 @@ AsyncMutex provides similar functionality to AsyncSemaphore, but only allows for
  * Async locking example:
 ```csharp
 using var mutex = new AsyncMutex();
-await semaphore.LockAsync();
+await mutex.LockAsync();
 try 
 {
     // Your operation
 }
 finally
 {
-    semaphore.Unlock();
+    mutex.Unlock();
 }
 ```
 
  * Synchronous locking example:
 ```csharp
 using var mutex = new AsyncMutex();
-semaphore.Lock();
+mutex.Lock();
 try 
 {
     // Your operation
 }
 finally
 {
-    semaphore.Unlock();
+    mutex.Unlock();
 }
 ```
 

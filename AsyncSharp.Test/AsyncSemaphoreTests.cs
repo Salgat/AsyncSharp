@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,7 +14,7 @@ namespace AsyncSharp.Test
             using var semaphore = new AsyncSemaphore(1, 1, true);
 
             semaphore.Wait();
-            var acquiredLock = semaphore.Wait(1, 0);
+            var acquiredLock = semaphore.Wait(1, TimeSpan.FromMilliseconds(0));
             
             Assert.False(acquiredLock);
         }
@@ -26,7 +25,7 @@ namespace AsyncSharp.Test
             using var semaphore = new AsyncSemaphore(1, 1, true);
 
             await semaphore.WaitAsync();
-            var acquiredLock = await semaphore.WaitAsync(1, 0);
+            var acquiredLock = await semaphore.WaitAsync(1, TimeSpan.FromMilliseconds(0));
 
             Assert.False(acquiredLock);
         }
@@ -66,11 +65,11 @@ namespace AsyncSharp.Test
             {
                 var maxToAcquire = amountLeft / 2;
                 var amountToAcquire = random.Next(1, maxToAcquire > 1 ? maxToAcquire : 1);
-                Assert.True(semaphore.Wait(amountToAcquire, 0));
+                Assert.True(semaphore.Wait(amountToAcquire, TimeSpan.FromMilliseconds(0)));
                 amountLeft -= amountToAcquire;
             }
             semaphore.Release(1000);
-            Assert.True(semaphore.Wait(1000, 0));
+            Assert.True(semaphore.Wait(1000, TimeSpan.FromMilliseconds(0)));
         }
 
         [Fact]
@@ -84,11 +83,11 @@ namespace AsyncSharp.Test
             {
                 var maxToAcquire = amountLeft / 2;
                 var amountToAcquire = random.Next(1, maxToAcquire > 1 ? maxToAcquire : 1);
-                Assert.True(await semaphore.WaitAsync(amountToAcquire, 0));
+                Assert.True(await semaphore.WaitAsync(amountToAcquire, TimeSpan.FromMilliseconds(0)));
                 amountLeft -= amountToAcquire;
             }
             semaphore.Release(1000);
-            Assert.True(await semaphore.WaitAsync(1000, 0));
+            Assert.True(await semaphore.WaitAsync(1000, TimeSpan.FromMilliseconds(0)));
         }
 
         [Fact]
@@ -96,9 +95,9 @@ namespace AsyncSharp.Test
         {
             using var semaphore = new AsyncSemaphore(0, 10, true);
 
-            var acquiredWhenNoneAvailable = semaphore.Wait(10, 0);
+            var acquiredWhenNoneAvailable = semaphore.Wait(10, TimeSpan.FromMilliseconds(0));
             semaphore.ReleaseAll();
-            var acquiredWhenAllAvailable = semaphore.Wait(10, 0);
+            var acquiredWhenAllAvailable = semaphore.Wait(10, TimeSpan.FromMilliseconds(0));
 
             Assert.False(acquiredWhenNoneAvailable);
             Assert.True(acquiredWhenAllAvailable);
@@ -109,9 +108,9 @@ namespace AsyncSharp.Test
         {
             using var semaphore = new AsyncSemaphore(0, 5, true);
 
-            var acquiredWhenNoneAvailable = semaphore.Wait(5, 0);
+            var acquiredWhenNoneAvailable = semaphore.Wait(5, TimeSpan.FromMilliseconds(0));
             semaphore.Release(5);
-            var acquiredWhenAllAvailable = semaphore.Wait(5, 0);
+            var acquiredWhenAllAvailable = semaphore.Wait(5, TimeSpan.FromMilliseconds(0));
 
             Assert.False(acquiredWhenNoneAvailable);
             Assert.True(acquiredWhenAllAvailable);
@@ -194,7 +193,7 @@ namespace AsyncSharp.Test
         {
             var startTime = Environment.TickCount;
             using var semaphore = new AsyncSemaphore(0, 1);
-            var acquiredSemaphore = semaphore.Wait(1, 250);
+            var acquiredSemaphore = semaphore.Wait(1, TimeSpan.FromMilliseconds(250));
             var timeWaited = Environment.TickCount - startTime;
 
             Assert.False(acquiredSemaphore);
@@ -206,7 +205,7 @@ namespace AsyncSharp.Test
         {
             var startTime = Environment.TickCount;
             using var semaphore = new AsyncSemaphore(0, 1);
-            var acquiredSemaphore = await semaphore.WaitAsync(1, 100);
+            var acquiredSemaphore = await semaphore.WaitAsync(1, TimeSpan.FromMilliseconds(100));
             var timeWaited = Environment.TickCount - startTime;
 
             Assert.False(acquiredSemaphore);
@@ -224,13 +223,13 @@ namespace AsyncSharp.Test
                 Task<bool> prioritySemaphoreWaiter;
                 if (currentOrder)
                 {
-                    normalSemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, AsyncSemaphore.DefaultPriority, CancellationToken.None);
-                    prioritySemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, AsyncSemaphore.DefaultPriority+1, CancellationToken.None);
+                    normalSemaphoreWaiter = semaphore.WaitAsync(1, Timeout.InfiniteTimeSpan, AsyncSemaphore.DefaultPriority, CancellationToken.None);
+                    prioritySemaphoreWaiter = semaphore.WaitAsync(1, Timeout.InfiniteTimeSpan, AsyncSemaphore.DefaultPriority+1, CancellationToken.None);
                 }
                 else
                 {
-                    prioritySemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, AsyncSemaphore.DefaultPriority+1, CancellationToken.None);
-                    normalSemaphoreWaiter = semaphore.WaitAsync(1, Timeout.Infinite, AsyncSemaphore.DefaultPriority, CancellationToken.None);
+                    prioritySemaphoreWaiter = semaphore.WaitAsync(1, Timeout.InfiniteTimeSpan, AsyncSemaphore.DefaultPriority+1, CancellationToken.None);
+                    normalSemaphoreWaiter = semaphore.WaitAsync(1, Timeout.InfiniteTimeSpan, AsyncSemaphore.DefaultPriority, CancellationToken.None);
                 }
                 currentOrder = !currentOrder;
                 semaphore.Release(1);

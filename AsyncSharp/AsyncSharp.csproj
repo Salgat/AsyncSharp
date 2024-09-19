@@ -17,7 +17,7 @@
         <IncludeSymbols>true</IncludeSymbols>
         <SymbolPackageFormat>snupkg</SymbolPackageFormat>
         <DebugType>portable</DebugType>
-        <Version>1.4.1</Version>
+        <Version>1.4.2</Version>
     </PropertyGroup>
     <ItemGroup>
         <None Include="..\LICENSE">

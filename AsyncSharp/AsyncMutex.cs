@@ -48,7 +48,7 @@ namespace AsyncSharp
         /// Synchronously acquires lock.
         /// </summary>
         /// <param name="timeout"></param>
-        public bool Lock(int timeout)
+        public bool Lock(TimeSpan timeout)
             => _asyncSemaphore.Wait(1, timeout);
 
         /// <summary>
@@ -63,7 +63,7 @@ namespace AsyncSharp
         /// </summary>
         /// <param name="timeout"></param>
         /// <param name="cancellationToken"></param>
-        public bool Lock(int timeout, CancellationToken cancellationToken)
+        public bool Lock(TimeSpan timeout, CancellationToken cancellationToken)
             => _asyncSemaphore.Wait(1, timeout, cancellationToken);
 
         /// <summary>
@@ -78,7 +78,7 @@ namespace AsyncSharp
         /// </summary>
         /// <param name="timeout"></param>
         /// <returns></returns>
-        public Task<bool> LockAsync(int timeout)
+        public Task<bool> LockAsync(TimeSpan timeout)
             => _asyncSemaphore.WaitAsync(1, timeout);
 
         /// <summary>
@@ -95,7 +95,7 @@ namespace AsyncSharp
         /// <param name="timeout"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        public Task<bool> LockAsync(int timeout, CancellationToken cancellationToken)
+        public Task<bool> LockAsync(TimeSpan timeout, CancellationToken cancellationToken)
             => _asyncSemaphore.WaitAsync(1, timeout, cancellationToken);
 
         /// <summary>
