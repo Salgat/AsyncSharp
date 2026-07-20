@@ -5,6 +5,8 @@
 
 A collection of async-friendly resource-control primitives, including **AsyncSemaphore**, **AsyncMutex**, and **ReadersWriterAsyncLock**. Every class provides synchronous and asynchronous acquisition APIs with cancellation-token support. `AsyncSemaphore` and `AsyncMutex` also expose timeout overloads; `ReadersWriterAsyncLock` uses cancellation tokens to bound acquisition time.
 
+Performance comparisons against the .NET base class library, Nito.AsyncEx, and Microsoft.VisualStudio.Threading are available in the [benchmark project](AsyncSharp.Benchmarks/README.md), with the latest curated run in [RESULTS.md](AsyncSharp.Benchmarks/RESULTS.md).
+
 ## AsyncSemaphore
 AsyncSemaphore provides similar functionality to SemaphoreSlim, along with the ability to acquire more than 1 count in a single operation, to release all at once, optional fairness (for both synchronous and asynchronous operations together), and optional disposable acquire and release operations. Disposing a semaphore faults pending waiters with `ObjectDisposedException`, and all later operations throw the same exception.
 

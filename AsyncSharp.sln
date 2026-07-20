@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AsyncSharp", "AsyncSharp\As
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsyncSharp.Test", "AsyncSharp.Test\AsyncSharp.Test.csproj", "{F8E37B90-71AB-4B46-9770-F0290468A75E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AsyncSharp.Benchmarks", "AsyncSharp.Benchmarks\AsyncSharp.Benchmarks.csproj", "{7F014703-8338-4D42-8D32-8BF2A00E1E2F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{F8E37B90-71AB-4B46-9770-F0290468A75E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F8E37B90-71AB-4B46-9770-F0290468A75E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F8E37B90-71AB-4B46-9770-F0290468A75E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7F014703-8338-4D42-8D32-8BF2A00E1E2F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7F014703-8338-4D42-8D32-8BF2A00E1E2F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7F014703-8338-4D42-8D32-8BF2A00E1E2F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7F014703-8338-4D42-8D32-8BF2A00E1E2F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
