@@ -64,36 +64,199 @@ namespace AsyncSharp
 
         public sealed class UpgradeableReaderAsyncLock : IDisposable
         {
-            internal readonly ReadersWriterAsyncLock _readersWriterAsyncLock;
-            private readonly Action _disposeAction;
+            private enum UpgradeState
+            {
+                Ready,
+                AcquiringUpgrade,
+                Upgraded,
+                Disposed
+            }
 
-            internal UpgradeableReaderAsyncLock(ReadersWriterAsyncLock readersWriterAsyncLock, Action disposeAction)
+            private sealed class UpgradedWriterLock : IDisposable
+            {
+                private UpgradeableReaderAsyncLock _owner;
+                private readonly int _acquiredCount;
+
+                public UpgradedWriterLock(UpgradeableReaderAsyncLock owner, int acquiredCount)
+                {
+                    _owner = owner;
+                    _acquiredCount = acquiredCount;
+                }
+
+                public void Dispose()
+                {
+                    var owner = Interlocked.Exchange(ref _owner, null);
+                    if (owner == null) return;
+
+                    owner.ReleaseUpgrade(_acquiredCount);
+                }
+            }
+
+            internal readonly ReadersWriterAsyncLock _readersWriterAsyncLock;
+            private readonly int _readerCount;
+            private readonly object _stateLock = new object();
+            private UpgradeState _state = UpgradeState.Ready;
+
+            internal UpgradeableReaderAsyncLock(ReadersWriterAsyncLock readersWriterAsyncLock, int readerCount)
             {
                 _readersWriterAsyncLock = readersWriterAsyncLock;
-                _disposeAction = disposeAction;
+                _readerCount = readerCount;
             }
 
             public IDisposable UpgradeToWriter()
                 => UpgradeToWriter(CancellationToken.None);
 
             public IDisposable UpgradeToWriter(CancellationToken cancellationToken)
-                => _readersWriterAsyncLock.AcquireReaders(_readersWriterAsyncLock.MaxReaders - 1, cancellationToken);
-            
+            {
+                var countToAcquire = BeginUpgrade();
+                var acquired = false;
+                try
+                {
+                    _readersWriterAsyncLock.AcquireUpgrade(countToAcquire, cancellationToken);
+                    acquired = true;
+
+                    var upgradedWriterLock = new UpgradedWriterLock(this, countToAcquire);
+                    CompleteUpgrade();
+                    return upgradedWriterLock;
+                }
+                catch
+                {
+                    try
+                    {
+                        if (acquired)
+                        {
+                            _readersWriterAsyncLock.ReleaseUpgrade(countToAcquire);
+                        }
+                    }
+                    finally
+                    {
+                        FailUpgrade();
+                    }
+
+                    throw;
+                }
+            }
+
             public Task<IDisposable> UpgradeToWriterAsync()
                 => UpgradeToWriterAsync(CancellationToken.None);
 
-            public Task<IDisposable> UpgradeToWriterAsync(CancellationToken cancellationToken)
-                => _readersWriterAsyncLock.AcquireReadersAsync(_readersWriterAsyncLock.MaxReaders - 1, cancellationToken);
+            public async Task<IDisposable> UpgradeToWriterAsync(CancellationToken cancellationToken)
+            {
+                var countToAcquire = BeginUpgrade();
+                var acquired = false;
+                try
+                {
+                    await _readersWriterAsyncLock.AcquireUpgradeAsync(countToAcquire, cancellationToken).ConfigureAwait(false);
+                    acquired = true;
+
+                    var upgradedWriterLock = new UpgradedWriterLock(this, countToAcquire);
+                    CompleteUpgrade();
+                    return upgradedWriterLock;
+                }
+                catch
+                {
+                    try
+                    {
+                        if (acquired)
+                        {
+                            _readersWriterAsyncLock.ReleaseUpgrade(countToAcquire);
+                        }
+                    }
+                    finally
+                    {
+                        FailUpgrade();
+                    }
+
+                    throw;
+                }
+            }
 
             public void Dispose()
             {
-                _disposeAction();
+                lock (_stateLock)
+                {
+                    if (_state == UpgradeState.Disposed) return;
+                    if (_state == UpgradeState.AcquiringUpgrade || _state == UpgradeState.Upgraded)
+                    {
+                        throw new InvalidOperationException(
+                            "Cannot dispose an upgradeable reader while a writer upgrade is pending or active. " +
+                            "Dispose the upgraded writer before disposing the upgradeable reader.");
+                    }
+
+                    _state = UpgradeState.Disposed;
+                }
+
+                _readersWriterAsyncLock.ReleaseUpgradeableReader(_readerCount);
+            }
+
+            private int BeginUpgrade()
+            {
+                lock (_stateLock)
+                {
+                    if (_state == UpgradeState.Disposed)
+                    {
+                        throw new ObjectDisposedException(nameof(UpgradeableReaderAsyncLock));
+                    }
+                    if (_state != UpgradeState.Ready)
+                    {
+                        throw new InvalidOperationException(
+                            "A writer upgrade is already pending or active for this upgradeable reader.");
+                    }
+
+                    _state = UpgradeState.AcquiringUpgrade;
+                    return _readersWriterAsyncLock.MaxReaders - _readerCount;
+                }
+            }
+
+            private void CompleteUpgrade()
+            {
+                lock (_stateLock)
+                {
+                    if (_state != UpgradeState.AcquiringUpgrade)
+                    {
+                        throw new InvalidOperationException("The upgradeable reader is not awaiting a writer upgrade.");
+                    }
+
+                    _state = UpgradeState.Upgraded;
+                }
+            }
+
+            private void FailUpgrade()
+            {
+                lock (_stateLock)
+                {
+                    if (_state == UpgradeState.AcquiringUpgrade)
+                    {
+                        _state = UpgradeState.Ready;
+                    }
+                }
+            }
+
+            private void ReleaseUpgrade(int acquiredCount)
+            {
+                try
+                {
+                    _readersWriterAsyncLock.ReleaseUpgrade(acquiredCount);
+                }
+                finally
+                {
+                    lock (_stateLock)
+                    {
+                        if (_state == UpgradeState.Upgraded)
+                        {
+                            _state = UpgradeState.Ready;
+                        }
+                    }
+                }
             }
         }
+
+        private const int UpgradePriority = int.MaxValue;
 
         public int MaxReaders { get; }
 
         internal readonly AsyncSemaphore _asyncSemaphore;
+        private readonly AsyncSemaphore _upgradeableReaderSemaphore;
 
         /// <summary>
         /// Allows for int.MaxValue readers with fair ordering of lock acquisition.
@@ -107,17 +270,23 @@ namespace AsyncSharp
         /// <summary>
         /// 
         /// </summary>
-        /// <param name="maxReaders">Maximum number of readers that can acquire the lock simultaenously.</param>
-        /// <param name="fair">If true, no new readers can acquire the lock until the writer's requested lock is acquired. 
+        /// <param name="maxReaders">Maximum number of readers that can acquire the lock simultaneously.</param>
+        /// <param name="fair">If true, no new readers can acquire the lock until the writer's requested lock is acquired.
         /// Use this if writer starvation due to high contention is a concern.</param>
         public ReadersWriterAsyncLock(int maxReaders, bool fair)
         {
+            ValidateMaxReaders(maxReaders);
             MaxReaders = maxReaders;
             _asyncSemaphore = new AsyncSemaphore(maxReaders, maxReaders, fair);
+            _upgradeableReaderSemaphore = new AsyncSemaphore(
+                1,
+                1,
+                AsyncSemaphore.WaiterPriority.FirstInFirstOut);
         }
 
         public ReadersWriterAsyncLock(int maxReaders, LockPriority lockPriority)
         {
+            ValidateMaxReaders(maxReaders);
             MaxReaders = maxReaders;
             AsyncSemaphore.WaiterPriority waiterPriority;
             switch (lockPriority)
@@ -138,9 +307,16 @@ namespace AsyncSharp
                     waiterPriority = AsyncSemaphore.WaiterPriority.Unfair;
                     break;
                 default:
-                    throw new ArgumentException($"{nameof(LockPriority)} value '{lockPriority}' not recognized.");
+                    throw new ArgumentOutOfRangeException(
+                        nameof(lockPriority),
+                        lockPriority,
+                        $"{nameof(LockPriority)} value '{lockPriority}' is not recognized.");
             }
             _asyncSemaphore = new AsyncSemaphore(maxReaders, maxReaders, waiterPriority);
+            _upgradeableReaderSemaphore = new AsyncSemaphore(
+                1,
+                1,
+                AsyncSemaphore.WaiterPriority.FirstInFirstOut);
         }
 
         #region Readers
@@ -167,12 +343,32 @@ namespace AsyncSharp
 
         public UpgradeableReaderAsyncLock AcquireUpgradeableReaders(int readerCount, CancellationToken cancellationToken)
         {
-            if (readerCount > MaxReaders)
-            {
-                throw new ArgumentOutOfRangeException($"'{nameof(readerCount)}' cannot exceed '{nameof(MaxReaders)}'.");
-            }
+            ValidateReaderCount(readerCount);
 
-            return new UpgradeableReaderAsyncLock(this, _asyncSemaphore.WaitAndRelease(1, cancellationToken).Dispose);
+            _upgradeableReaderSemaphore.Wait(cancellationToken);
+            var readerAcquired = false;
+            try
+            {
+                _asyncSemaphore.Wait(readerCount, cancellationToken);
+                readerAcquired = true;
+                return new UpgradeableReaderAsyncLock(this, readerCount);
+            }
+            catch
+            {
+                try
+                {
+                    if (readerAcquired)
+                    {
+                        _asyncSemaphore.Release(readerCount);
+                    }
+                }
+                finally
+                {
+                    _upgradeableReaderSemaphore.Release();
+                }
+
+                throw;
+            }
         }
 
         #endregion
@@ -198,7 +394,34 @@ namespace AsyncSharp
             => AcquireUpgradeableReadersAsync(readerCount, CancellationToken.None);
 
         public async Task<UpgradeableReaderAsyncLock> AcquireUpgradeableReadersAsync(int readerCount, CancellationToken cancellationToken)
-            => new UpgradeableReaderAsyncLock(this, (await _asyncSemaphore.WaitAndReleaseAsync(readerCount, cancellationToken).ConfigureAwait(false)).Dispose);
+        {
+            ValidateReaderCount(readerCount);
+
+            await _upgradeableReaderSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+            var readerAcquired = false;
+            try
+            {
+                await _asyncSemaphore.WaitAsync(readerCount, cancellationToken).ConfigureAwait(false);
+                readerAcquired = true;
+                return new UpgradeableReaderAsyncLock(this, readerCount);
+            }
+            catch
+            {
+                try
+                {
+                    if (readerAcquired)
+                    {
+                        _asyncSemaphore.Release(readerCount);
+                    }
+                }
+                finally
+                {
+                    _upgradeableReaderSemaphore.Release();
+                }
+
+                throw;
+            }
+        }
 
         #endregion
 
@@ -220,6 +443,79 @@ namespace AsyncSharp
 
         #endregion
 
-        public void Dispose() => _asyncSemaphore.Dispose();
+        public void Dispose()
+        {
+            try
+            {
+                _upgradeableReaderSemaphore.Dispose();
+            }
+            finally
+            {
+                _asyncSemaphore.Dispose();
+            }
+        }
+
+        private static void ValidateMaxReaders(int maxReaders)
+        {
+            if (maxReaders <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(maxReaders),
+                    $"'{nameof(maxReaders)}' must be greater than zero.");
+            }
+        }
+
+        private void ValidateReaderCount(int readerCount)
+        {
+            if (readerCount <= 0 || readerCount > MaxReaders)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(readerCount),
+                    $"'{nameof(readerCount)}' must be greater than zero and cannot exceed '{nameof(MaxReaders)}'.");
+            }
+        }
+
+        private void AcquireUpgrade(int count, CancellationToken cancellationToken)
+        {
+            var acquired = _asyncSemaphore.Wait(
+                count,
+                AsyncSemaphore.InfiniteTimeSpan,
+                UpgradePriority,
+                cancellationToken);
+            if (!acquired)
+            {
+                throw new InvalidOperationException("An infinite writer upgrade wait completed without acquiring the requested count.");
+            }
+        }
+
+        private async Task AcquireUpgradeAsync(int count, CancellationToken cancellationToken)
+        {
+            var acquired = await _asyncSemaphore.WaitAsync(
+                count,
+                AsyncSemaphore.InfiniteTimeSpan,
+                UpgradePriority,
+                cancellationToken).ConfigureAwait(false);
+            if (!acquired)
+            {
+                throw new InvalidOperationException("An infinite writer upgrade wait completed without acquiring the requested count.");
+            }
+        }
+
+        private void ReleaseUpgrade(int count)
+        {
+            _asyncSemaphore.Release(count);
+        }
+
+        private void ReleaseUpgradeableReader(int readerCount)
+        {
+            try
+            {
+                _asyncSemaphore.Release(readerCount);
+            }
+            finally
+            {
+                _upgradeableReaderSemaphore.Release();
+            }
+        }
     }
 }

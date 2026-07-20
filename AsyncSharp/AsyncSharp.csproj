@@ -5,9 +5,8 @@
         <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
         <Title>$(AssemblyName)</Title>
         <Authors>Austin Salgat</Authors>
-        <Company />
         <Description>Provides async friendly mutex, semaphore, and upgradeable reader-writer lock.</Description>
-        <Copyright>2024</Copyright>
+        <Copyright>Copyright © 2018-2026 Austin Salgat</Copyright>
         <PackageProjectUrl>https://github.com/Salgat/AsyncSharp</PackageProjectUrl>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <RepositoryUrl>https://github.com/Salgat/AsyncSharp</RepositoryUrl>
@@ -17,7 +16,9 @@
         <IncludeSymbols>true</IncludeSymbols>
         <SymbolPackageFormat>snupkg</SymbolPackageFormat>
         <DebugType>portable</DebugType>
-        <Version>1.4.2</Version>
+        <Version>1.4.3</Version>
+        <EnablePackageValidation>true</EnablePackageValidation>
+        <PackageValidationBaselineVersion>1.4.2</PackageValidationBaselineVersion>
     </PropertyGroup>
     <ItemGroup>
         <None Include="..\LICENSE">

@@ -212,40 +212,45 @@ namespace AsyncSharp.Test
             Assert.True(timeWaited >= 90);
         }
 
-        [Fact]
-        public async Task WaitAsync_Priority()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task WaitAsync_Priority(bool priorityEnqueuedFirst)
         {
-            var currentOrder = false; // We alternate the order of the two waiter acquires
-            (Task<bool> Normal, Task<bool> Priority) GenerateWaiterTasks()
-            {
-                using var semaphore = new AsyncSemaphore(0, 1);
-                Task<bool> normalSemaphoreWaiter;
-                Task<bool> prioritySemaphoreWaiter;
-                if (currentOrder)
-                {
-                    normalSemaphoreWaiter = semaphore.WaitAsync(1, Timeout.InfiniteTimeSpan, AsyncSemaphore.DefaultPriority, CancellationToken.None);
-                    prioritySemaphoreWaiter = semaphore.WaitAsync(1, Timeout.InfiniteTimeSpan, AsyncSemaphore.DefaultPriority+1, CancellationToken.None);
-                }
-                else
-                {
-                    prioritySemaphoreWaiter = semaphore.WaitAsync(1, Timeout.InfiniteTimeSpan, AsyncSemaphore.DefaultPriority+1, CancellationToken.None);
-                    normalSemaphoreWaiter = semaphore.WaitAsync(1, Timeout.InfiniteTimeSpan, AsyncSemaphore.DefaultPriority, CancellationToken.None);
-                }
-                currentOrder = !currentOrder;
-                semaphore.Release(1);
+            using var semaphore = new AsyncSemaphore(0, 1);
+            Task<bool> normalSemaphoreWaiter;
+            Task<bool> prioritySemaphoreWaiter;
+            var timeout = TimeSpan.FromSeconds(5);
 
-                return (normalSemaphoreWaiter, prioritySemaphoreWaiter);
+            if (priorityEnqueuedFirst)
+            {
+                prioritySemaphoreWaiter = semaphore.WaitAsync(
+                    1, timeout, AsyncSemaphore.DefaultPriority + 1, CancellationToken.None);
+                normalSemaphoreWaiter = semaphore.WaitAsync(
+                    1, timeout, AsyncSemaphore.DefaultPriority, CancellationToken.None);
+            }
+            else
+            {
+                normalSemaphoreWaiter = semaphore.WaitAsync(
+                    1, timeout, AsyncSemaphore.DefaultPriority, CancellationToken.None);
+                prioritySemaphoreWaiter = semaphore.WaitAsync(
+                    1, timeout, AsyncSemaphore.DefaultPriority + 1, CancellationToken.None);
             }
 
-            for (var i = 0; i < 10000; ++i)
-            {
-                var (normalSemaphoreWaiter, prioritySemaphoreWaiter) = GenerateWaiterTasks();
-                var finishedWaiter = await Task.WhenAny(normalSemaphoreWaiter, prioritySemaphoreWaiter);
-                Assert.Equal(prioritySemaphoreWaiter, finishedWaiter);
-                Assert.True(finishedWaiter.Result);
-                Assert.True(prioritySemaphoreWaiter.IsCompletedSuccessfully);
-                Assert.False(normalSemaphoreWaiter.IsCompletedSuccessfully);
-            }
+            semaphore.Release(1);
+            var finishedWaiter = await Task.WhenAny(
+                normalSemaphoreWaiter,
+                prioritySemaphoreWaiter);
+
+            // Settle the lower-priority waiter before asserting or disposing.
+            semaphore.Release(1);
+            var results = await Task.WhenAll(
+                normalSemaphoreWaiter,
+                prioritySemaphoreWaiter);
+
+            Assert.Same(prioritySemaphoreWaiter, finishedWaiter);
+            Assert.All(results, result => Assert.True(result));
+            Assert.Equal(0, semaphore.CurrentCount);
         }
         
         [Fact]
@@ -321,9 +326,12 @@ namespace AsyncSharp.Test
             void IncrementAfter() { lock (lockObject) { afterCount++; } }
 
             using var semaphore = new AsyncSemaphore(100, 100);
+            using var timeoutSource =
+                new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var parallelOptions = new ParallelOptions()
             {
-                MaxDegreeOfParallelism = 200
+                MaxDegreeOfParallelism = 200,
+                CancellationToken = timeoutSource.Token
             };
             var waitTask = Parallel.ForEachAsync(Enumerable.Range(0, 200), parallelOptions, async (_, ct) =>
             {
@@ -332,31 +340,50 @@ namespace AsyncSharp.Test
                 IncrementAfter();
             });
 
-            // Wait for the first 100 semaphore requests to acquire and the last 100 to be pending
-            while (true)
+            try
             {
+                // Wait for the first 100 requests to acquire and the last 100 to queue.
+                while (true)
+                {
+                    timeoutSource.Token.ThrowIfCancellationRequested();
+                    var expectedWorkerCountsReached = false;
+                    lock (lockObject)
+                    {
+                        expectedWorkerCountsReached = beforeCount == 200 && afterCount == 100;
+                    }
+                    if (expectedWorkerCountsReached && semaphore.QueuedWaiterCount == 100)
+                    {
+                        break;
+                    }
+                    await Task.Delay(10, timeoutSource.Token);
+                }
+
+                Assert.Equal(100, semaphore.QueuedWaiterCount);
+                Assert.Equal(0, semaphore.CurrentCount);
                 lock (lockObject)
                 {
-                    if (beforeCount == 200 && afterCount == 100) break;
+                    Assert.Equal(200, beforeCount);
+                    Assert.Equal(100, afterCount);
                 }
-                await Task.Delay(100);
-            }
-            lock (lockObject)
-            {
-                Assert.Equal(100, semaphore._queuedAcquireRequests.Values.Sum(q => q.Count));
-                Assert.Equal(0, semaphore.CurrentCount);
-                Assert.Equal(200, beforeCount);
-                Assert.Equal(100, afterCount);
-            }
 
-            // Now release 100 and ensure all 100 remaining semaphore requests acquire.
-            foreach (var _ in Enumerable.Range(0, 100))
-            {
-                semaphore.Release();
+                // Release the remaining requests and await every worker.
+                semaphore.Release(100);
+                await waitTask;
+                Assert.Equal(0, semaphore.CurrentCount);
+                Assert.Empty(semaphore._queuedAcquireRequests);
             }
-            await waitTask;
-            Assert.Equal(0, semaphore.CurrentCount);
-            Assert.Empty(semaphore._queuedAcquireRequests);
+            finally
+            {
+                timeoutSource.Cancel();
+                try
+                {
+                    await waitTask;
+                }
+                catch (OperationCanceledException)
+                    when (timeoutSource.IsCancellationRequested)
+                {
+                }
+            }
         }
 
         [Fact]

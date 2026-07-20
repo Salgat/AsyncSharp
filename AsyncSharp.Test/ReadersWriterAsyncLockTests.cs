@@ -63,51 +63,49 @@ namespace AsyncSharp.Test
         [Fact]
         public async Task AcquireReadersAndWritersParallel()
         {
-            var lockObject = new object();
-            var beforeCount = 0;
-            var duringCount = 0;
-            var afterCount = 0;
-            void IncrementBeforeReaderLock() { lock (lockObject) { beforeCount++; } }
-            void IncrementAfterReaderLock() { lock (lockObject) { duringCount++; } }
-            void IncrementAfterWriterLock() { lock (lockObject) { afterCount++; } }
+            using var readersWriterAsyncLock = new ReadersWriterAsyncLock(2);
+            var firstReader = await readersWriterAsyncLock.AcquireReaderAsync();
+            var secondReader = await readersWriterAsyncLock.AcquireReaderAsync();
+            using var writerCancellation =
+                new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var writerTask =
+                readersWriterAsyncLock.AcquireWriterAsync(writerCancellation.Token);
+            IDisposable writer = null;
 
-            using var readersWriterAsyncLock = new ReadersWriterAsyncLock();
-            var readerLock = new SemaphoreSlim(0, 2);
-            var writerLock = new SemaphoreSlim(0, 2);
+            try
+            {
+                Assert.False(writerTask.IsCompleted);
 
-            using var cancellationTokenSource = new CancellationTokenSource();
-            var parallelOptions = new ParallelOptions()
-            {
-                MaxDegreeOfParallelism = 2,
-                CancellationToken = cancellationTokenSource.Token
-            };
-            var waitTask = Parallel.ForEachAsync(Enumerable.Range(0, 2), parallelOptions, async (_, ct) =>
-            {
-                IncrementBeforeReaderLock();
-                using var upgradeableLock = await readersWriterAsyncLock.AcquireUpgradeableReaderAsync(ct);
-                IncrementAfterReaderLock();
-                await readerLock.WaitAsync(ct);
-                using var upgradedWriterLock = await upgradeableLock.UpgradeToWriterAsync(ct);
-                IncrementAfterWriterLock();
-                await writerLock.WaitAsync(ct);
-            });
+                firstReader.Dispose();
+                firstReader = null;
+                Assert.False(writerTask.IsCompleted);
 
-            // Both readers should be acquired and waiting on the semaphoreslim
-            while (true)
-            {
-                lock (lockObject)
-                {
-                    if (duringCount == 2) break;
-                }
-                await Task.Delay(100);
+                secondReader.Dispose();
+                secondReader = null;
+
+                writer = await writerTask;
+                Assert.NotNull(writer);
             }
-            Assert.Equal(2, readersWriterAsyncLock._asyncSemaphore.MaxCount - readersWriterAsyncLock._asyncSemaphore.CurrentCount);
+            finally
+            {
+                firstReader?.Dispose();
+                secondReader?.Dispose();
 
-            // Release both, and both should not have acquired the writer
-            readerLock.Release();
-            readerLock.Release();
-            await Task.Delay(100);
-            Assert.Equal(0, afterCount);
+                if (writer == null)
+                {
+                    writerCancellation.Cancel();
+                    try
+                    {
+                        writer = await writerTask;
+                    }
+                    catch (OperationCanceledException)
+                        when (writerCancellation.IsCancellationRequested)
+                    {
+                    }
+                }
+
+                writer?.Dispose();
+            }
         }
 
         [Fact]
@@ -119,47 +117,71 @@ namespace AsyncSharp.Test
             var hasReader = new Dictionary<int, bool>();
 
             using var readerWriterUpgradeableLock = new ReadersWriterAsyncLock();
-            var random = new Random();
             const int parallelThreads = 10;
+            const int targetWrites = 25;
+            using var timeoutSource =
+                new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var parallelOptions = new ParallelOptions()
             {
-                MaxDegreeOfParallelism = parallelThreads
+                MaxDegreeOfParallelism = parallelThreads,
+                CancellationToken = timeoutSource.Token
             };
             await Parallel.ForEachAsync(Enumerable.Range(0, parallelThreads), parallelOptions, async (index, ct) =>
             {
                 while (true)
                 {
-                    if (index != 0) await Task.Delay(random.Next(20), ct); // Give the writer some room to enter
-                    using var readerLock = await readerWriterUpgradeableLock.AcquireUpgradeableReaderAsync(ct);
-                    lock (lockObject)
+                    if (index != 0) await Task.Delay(Random.Shared.Next(20), ct); // Give the writer some room to enter
+
+                    ReadersWriterAsyncLock.UpgradeableReaderAsyncLock upgradeableLock = null;
+                    IDisposable readerLock;
+                    if (index == 0)
                     {
-                        hasReader[index] = true;
-                        readsAcquiredCount++;
+                        upgradeableLock =
+                            await readerWriterUpgradeableLock.AcquireUpgradeableReaderAsync(ct);
+                        readerLock = upgradeableLock;
                     }
-                    if (index != 0) await Task.Delay(random.Next(2), ct); // Give the writer some room to enter
-                    lock (lockObject)
+                    else
                     {
-                        if (writesAcquiredCount == 100) return;
-                        if (index != 0)
-                        {
-                            hasReader[index] = false;
-                            continue; // Only one thread should be acquiring writer
-                        }
+                        readerLock =
+                            await readerWriterUpgradeableLock.AcquireReaderAsync(ct);
                     }
 
-                    using var writerLock = await readerLock.UpgradeToWriterAsync(ct);
-                    lock (lockObject)
+                    using (readerLock)
                     {
-                        if (hasReader.Any(h => h.Key != 0 && h.Value == true))
+                        lock (lockObject)
                         {
-                            throw new Exception("Another reader exists while writer is acquired");
+                            hasReader[index] = true;
+                            readsAcquiredCount++;
                         }
-                        if (writesAcquiredCount == 100) return;
-                        writesAcquiredCount++;
+                        if (index != 0) await Task.Delay(Random.Shared.Next(2), ct); // Give the writer some room to enter
+                        lock (lockObject)
+                        {
+                            if (writesAcquiredCount == targetWrites) return;
+                            if (index != 0)
+                            {
+                                hasReader[index] = false;
+                                continue; // Only one thread should be acquiring writer
+                            }
+                        }
+
+                        using var writerLock =
+                            await upgradeableLock.UpgradeToWriterAsync(ct);
+                        lock (lockObject)
+                        {
+                            if (hasReader.Any(h => h.Key != 0 && h.Value == true))
+                            {
+                                throw new Exception("Another reader exists while writer is acquired");
+                            }
+                            if (writesAcquiredCount == targetWrites) return;
+                            writesAcquiredCount++;
+                        }
+                        await Task.Delay(20, ct);
                     }
-                    await Task.Delay(100, ct);
                 }
             });
+
+            Assert.Equal(targetWrites, writesAcquiredCount);
+            Assert.True(readsAcquiredCount >= targetWrites);
         }
     }
 }

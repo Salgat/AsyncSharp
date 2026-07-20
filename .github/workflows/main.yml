@@ -1,4 +1,4 @@
-name: Build, Test, and Publish to NuGet
+name: Validate
 
 on:
   push:
@@ -9,39 +9,107 @@ on:
     branches:
       - main
       - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-test-pack:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Checkout source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: '8.x'  # Adjust this to the version of .NET your project uses
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 8.x
 
-    - name: Restore dependencies
-      run: dotnet restore
+      - name: Restore
+        run: dotnet restore AsyncSharp.sln
 
-    - name: Build project
-      run: dotnet build --configuration Release --no-restore
+      - name: Build
+        run: >-
+          dotnet build AsyncSharp.sln
+          --configuration Release
+          --no-restore
+          -warnaserror
+          -p:ContinuousIntegrationBuild=true
 
-    - name: Run tests
-      run: dotnet test --configuration Release --no-build --verbosity normal
+      - name: Test
+        run: >-
+          dotnet test AsyncSharp.sln
+          --configuration Release
+          --no-build
+          --no-restore
+          --verbosity normal
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory TestResults
+          --blame-hang-timeout 2m
 
-    - name: Pack project
-      run: dotnet pack --configuration Release --no-build --output ./nupkg --include-symbols --include-source
+      - name: Pack library
+        if: runner.os == 'Linux'
+        run: >-
+          dotnet pack AsyncSharp/AsyncSharp.csproj
+          --configuration Release
+          --no-build
+          --no-restore
+          --output artifacts
+          -p:ContinuousIntegrationBuild=true
 
-    - name: Publish to NuGet
-      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-      env:
-        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-      run: |
-        # Push the standard package
-        dotnet nuget push ./nupkg/*.nupkg --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Read package version
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(dotnet msbuild AsyncSharp/AsyncSharp.csproj -nologo -getProperty:Version | tr -d '\r')"
+          echo "PACKAGE_VERSION=$package_version" >> "$GITHUB_ENV"
 
-        # Push the symbol package to the NuGet symbol server
-        dotnet nuget push ./nupkg/*.snupkg --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Restore package smoke test
+        if: runner.os == 'Linux'
+        run: >-
+          dotnet restore eng/PackageSmokeTest/PackageSmokeTest.csproj
+          --source "${{ github.workspace }}/artifacts"
+          --packages "${{ runner.temp }}/asyncsharp-smoke-packages"
+          --force
+          --no-cache
+          -p:PackageVersionToTest="$PACKAGE_VERSION"
+
+      - name: Run package smoke test
+        if: runner.os == 'Linux'
+        run: >-
+          dotnet run
+          --project eng/PackageSmokeTest/PackageSmokeTest.csproj
+          --configuration Release
+          --no-restore
+          -p:PackageVersionToTest="$PACKAGE_VERSION"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults
+          if-no-files-found: error
+
+      - name: Upload package validation artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nuget-validation-package
+          path: artifacts/*.*nupkg
+          if-no-files-found: error
