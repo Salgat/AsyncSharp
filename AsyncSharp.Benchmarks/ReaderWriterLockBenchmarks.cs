@@ -8,6 +8,7 @@ using VsReaderWriterLock = Microsoft.VisualStudio.Threading.AsyncReaderWriterLoc
 namespace AsyncSharp.Benchmarks;
 
 [MemoryDiagnoser]
+[InvocationCount(256)]
 [CategoriesColumn]
 [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
 [Orderer(SummaryOrderPolicy.FastestToSlowest)]
@@ -20,7 +21,7 @@ public class ReaderWriterUncontendedBenchmarks
     private readonly SharpReaderWriterLock _sharp = new();
     private readonly VsReaderWriterLock _vs = new();
 
-    [Benchmark(OperationsPerInvoke = Operations)]
+    [Benchmark(OperationsPerInvoke = Operations, Baseline = true)]
     [BenchmarkCategory("Sync read")]
     public void Bcl_SyncRead()
     {
@@ -55,7 +56,7 @@ public class ReaderWriterUncontendedBenchmarks
         }
     }
 
-    [Benchmark(OperationsPerInvoke = Operations)]
+    [Benchmark(OperationsPerInvoke = Operations, Baseline = true)]
     [BenchmarkCategory("Sync write")]
     public void Bcl_SyncWrite()
     {
@@ -90,7 +91,7 @@ public class ReaderWriterUncontendedBenchmarks
         }
     }
 
-    [Benchmark(OperationsPerInvoke = Operations)]
+    [Benchmark(OperationsPerInvoke = Operations, Baseline = true)]
     [BenchmarkCategory("Async read")]
     public async Task Nito_AsyncRead()
     {
@@ -126,7 +127,7 @@ public class ReaderWriterUncontendedBenchmarks
         }
     }
 
-    [Benchmark(OperationsPerInvoke = Operations)]
+    [Benchmark(OperationsPerInvoke = Operations, Baseline = true)]
     [BenchmarkCategory("Async write")]
     public async Task Nito_AsyncWrite()
     {
@@ -162,7 +163,7 @@ public class ReaderWriterUncontendedBenchmarks
         }
     }
 
-    [Benchmark(OperationsPerInvoke = Operations)]
+    [Benchmark(OperationsPerInvoke = Operations, Baseline = true)]
     [BenchmarkCategory("Sync upgrade")]
     public void Bcl_SyncUpgrade()
     {
@@ -207,7 +208,7 @@ public class ReaderWriterUncontendedBenchmarks
         }
     }
 
-    [Benchmark(OperationsPerInvoke = Operations)]
+    [Benchmark(OperationsPerInvoke = Operations, Baseline = true)]
     [BenchmarkCategory("Async upgrade")]
     public async Task VsThreading_AsyncUpgrade()
     {
@@ -230,6 +231,7 @@ public class ReaderWriterUncontendedBenchmarks
 }
 
 [MemoryDiagnoser]
+[InvocationCount(64)]
 [CategoriesColumn]
 [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
 [Orderer(SummaryOrderPolicy.FastestToSlowest)]
@@ -239,10 +241,10 @@ public class ReaderWriterContentionBenchmarks
     private readonly SharpReaderWriterLock _sharp = new();
     private readonly VsReaderWriterLock _vs = new();
 
-    [Params(16, 64)]
+    [Params(1, 16, 64, 256)]
     public int WaiterCount { get; set; }
 
-    [Benchmark]
+    [Benchmark(Baseline = true)]
     [BenchmarkCategory("Readers after writer")]
     public async Task Nito_ReadersAfterWriter()
     {
@@ -253,6 +255,7 @@ public class ReaderWriterContentionBenchmarks
             waiters[i] = UseNitoReaderOnceAsync();
         }
 
+        BenchmarkTaskAssertions.EnsureAllPending(waiters);
         owner.Dispose();
         await Task.WhenAll(waiters).ConfigureAwait(false);
     }
@@ -268,6 +271,7 @@ public class ReaderWriterContentionBenchmarks
             waiters[i] = UseAsyncSharpReaderOnceAsync();
         }
 
+        BenchmarkTaskAssertions.EnsureAllPending(waiters);
         owner.Dispose();
         await Task.WhenAll(waiters).ConfigureAwait(false);
     }
@@ -286,11 +290,12 @@ public class ReaderWriterContentionBenchmarks
             }
         }
 
+        BenchmarkTaskAssertions.EnsureAllPending(waiters);
         owner.Dispose();
         await Task.WhenAll(waiters).ConfigureAwait(false);
     }
 
-    [Benchmark]
+    [Benchmark(Baseline = true)]
     [BenchmarkCategory("Writers after reader")]
     public async Task Nito_WritersAfterReader()
     {
@@ -301,6 +306,7 @@ public class ReaderWriterContentionBenchmarks
             waiters[i] = UseNitoWriterOnceAsync();
         }
 
+        BenchmarkTaskAssertions.EnsureAllPending(waiters);
         owner.Dispose();
         await Task.WhenAll(waiters).ConfigureAwait(false);
     }
@@ -316,6 +322,7 @@ public class ReaderWriterContentionBenchmarks
             waiters[i] = UseAsyncSharpWriterOnceAsync();
         }
 
+        BenchmarkTaskAssertions.EnsureAllPending(waiters);
         owner.Dispose();
         await Task.WhenAll(waiters).ConfigureAwait(false);
     }
@@ -334,6 +341,7 @@ public class ReaderWriterContentionBenchmarks
             }
         }
 
+        BenchmarkTaskAssertions.EnsureAllPending(waiters);
         owner.Dispose();
         await Task.WhenAll(waiters).ConfigureAwait(false);
     }
@@ -378,6 +386,123 @@ public class ReaderWriterContentionBenchmarks
         using (await _vs.WriteLockAsync())
         {
         }
+    }
+
+    [GlobalCleanup]
+    public void Cleanup()
+    {
+        _sharp.Dispose();
+        _vs.Dispose();
+    }
+}
+
+[MemoryDiagnoser]
+[InvocationCount(1)]
+[Orderer(SummaryOrderPolicy.FastestToSlowest)]
+public class ReaderWriterMixedContentionBenchmarks
+{
+    private const int WorkerCount = 20;
+    private const int OperationsPerWorker = 10;
+
+    private readonly NitoReaderWriterLock _nito = new();
+    private readonly SharpReaderWriterLock _sharp = new();
+    private readonly VsReaderWriterLock _vs = new();
+
+    [Params(10, 50)]
+    public int WriterPercentage { get; set; }
+
+    [Benchmark(Baseline = true)]
+    public Task Nito_MixedReadersAndWriters()
+        => RunWorkersAsync(UseNitoOnceAsync);
+
+    [Benchmark]
+    public Task AsyncSharp_MixedReadersAndWriters()
+        => RunWorkersAsync(UseAsyncSharpOnceAsync);
+
+    [Benchmark]
+    public Task VsThreading_MixedReadersAndWriters()
+        => RunWorkersAsync(UseVsThreadingOnceAsync);
+
+    private static async Task RunWorkersAsync(Func<int, int, Task> useLockAsync)
+    {
+        var start = new TaskCompletionSource<object?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var workers = new Task[WorkerCount];
+        for (var worker = 0; worker < workers.Length; ++worker)
+        {
+            var workerId = worker;
+            workers[worker] = Task.Run(async () =>
+            {
+                await start.Task.ConfigureAwait(false);
+                for (var operation = 0; operation < OperationsPerWorker; ++operation)
+                {
+                    await useLockAsync(workerId, operation).ConfigureAwait(false);
+                }
+            });
+        }
+
+        start.SetResult(null);
+        await Task.WhenAll(workers).ConfigureAwait(false);
+    }
+
+    private async Task UseNitoOnceAsync(int worker, int operation)
+    {
+        if (IsWriter(worker, operation))
+        {
+            using (await _nito.WriterLockAsync())
+            {
+                await Task.Yield();
+            }
+        }
+        else
+        {
+            using (await _nito.ReaderLockAsync())
+            {
+                await Task.Yield();
+            }
+        }
+    }
+
+    private async Task UseAsyncSharpOnceAsync(int worker, int operation)
+    {
+        if (IsWriter(worker, operation))
+        {
+            using (await _sharp.AcquireWriterAsync().ConfigureAwait(false))
+            {
+                await Task.Yield();
+            }
+        }
+        else
+        {
+            using (await _sharp.AcquireReaderAsync().ConfigureAwait(false))
+            {
+                await Task.Yield();
+            }
+        }
+    }
+
+    private async Task UseVsThreadingOnceAsync(int worker, int operation)
+    {
+        if (IsWriter(worker, operation))
+        {
+            using (await _vs.WriteLockAsync())
+            {
+                await Task.Yield();
+            }
+        }
+        else
+        {
+            using (await _vs.ReadLockAsync())
+            {
+                await Task.Yield();
+            }
+        }
+    }
+
+    private bool IsWriter(int worker, int operation)
+    {
+        var operationIndex = worker * OperationsPerWorker + operation;
+        return operationIndex * 37 % 100 < WriterPercentage;
     }
 
     [GlobalCleanup]
